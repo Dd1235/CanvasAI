@@ -1,0 +1,187 @@
+import type {
+  ActiveRecallCard,
+  ActiveRecallSessionGroup,
+  ActiveRecallStats,
+  CanvasEdge,
+  CanvasNode,
+  ChatMessage,
+  ChatSessionSummary,
+  KnowledgeGraphPayload,
+  SessionSummary,
+  SessionTurn,
+  VisualizationTool,
+} from "@/lib/canvasai-types";
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+export const KNOWLEDGE_GRAPH_ENDPOINT = "/knowledge-graph/current";
+export const KNOWLEDGE_GRAPH_EXPORT_ENDPOINT = "/knowledge-graph/from-session";
+
+type RequestOptions = Omit<RequestInit, "body"> & {
+  body?: unknown;
+};
+
+export class CanvasAIApiError extends Error {
+  constructor(
+    message: string,
+    public status?: number,
+  ) {
+    super(message);
+    this.name = "CanvasAIApiError";
+  }
+}
+
+export function backendWebSocketUrl(sessionId: string) {
+  const url = new URL(BACKEND_URL);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = `/ws/sessions/${sessionId}`;
+  url.search = "";
+  return url.toString();
+}
+
+export async function listCanvasSessions() {
+  return request<SessionSummary[]>("/sessions");
+}
+
+export async function createCanvasSession(title?: string) {
+  return request<{ id: string; title: string }>("/sessions", {
+    method: "POST",
+    body: { title },
+  });
+}
+
+export async function getCanvasHistory(sessionId: string) {
+  return request<{ turns: SessionTurn[] }>(`/sessions/${sessionId}/history`);
+}
+
+export async function listChatSessions() {
+  return request<ChatSessionSummary[]>("/chat/sessions");
+}
+
+export async function createChatSession(title?: string) {
+  return request<{ id: string; title: string }>("/chat/sessions", {
+    method: "POST",
+    body: { title },
+  });
+}
+
+export async function getChatMessages(sessionId: string) {
+  return request<ChatMessage[]>(`/chat/sessions/${sessionId}/messages`);
+}
+
+export async function sendChatMessage(
+  sessionId: string,
+  message: string,
+  visualizationTool: VisualizationTool,
+) {
+  return request<{
+    session_id: string;
+    user_message: ChatMessage;
+    assistant_message: ChatMessage;
+  }>(`/chat/sessions/${sessionId}/messages`, {
+    method: "POST",
+    body: { message, visualization_tool: visualizationTool },
+  });
+}
+
+export async function getActiveRecallStats() {
+  return request<ActiveRecallStats>("/active-recall/stats");
+}
+
+export async function listActiveRecallCards(options: { sessionId?: string; dueOnly?: boolean } = {}) {
+  const params = new URLSearchParams();
+  if (options.sessionId) params.set("session_id", options.sessionId);
+  if (options.dueOnly) params.set("due_only", "true");
+  const query = params.toString();
+  return request<ActiveRecallCard[]>(`/active-recall/cards${query ? `?${query}` : ""}`);
+}
+
+export async function listActiveRecallSessions(options: { dueOnly?: boolean } = {}) {
+  const params = new URLSearchParams();
+  if (options.dueOnly) params.set("due_only", "true");
+  const query = params.toString();
+  return request<ActiveRecallSessionGroup[]>(`/active-recall/sessions${query ? `?${query}` : ""}`);
+}
+
+export async function buildRecallFromSession({
+  sessionId,
+  title,
+  prompt,
+  nodes,
+  edges,
+}: {
+  sessionId: string;
+  title?: string;
+  prompt?: string;
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+}) {
+  return request<{ session_id: string; cards: ActiveRecallCard[]; replaced_count: number }>(
+    `/active-recall/from-session/${sessionId}`,
+    {
+      method: "POST",
+      body: { title, prompt, nodes, edges },
+    },
+  );
+}
+
+export async function reviewRecallCard(cardId: string, rating: "again" | "hard" | "good" | "easy") {
+  return request<ActiveRecallCard>(`/active-recall/cards/${cardId}/review`, {
+    method: "POST",
+    body: { rating },
+  });
+}
+
+export async function deleteSessionRecallCards(sessionId: string) {
+  return request<{ deleted: number }>(`/active-recall/sessions/${sessionId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getKnowledgeGraph() {
+  return request<KnowledgeGraphPayload>(KNOWLEDGE_GRAPH_ENDPOINT);
+}
+
+export async function exportSessionToKnowledgeGraph({
+  sessionId,
+  prompt,
+  nodes,
+  edges,
+}: {
+  sessionId: string;
+  prompt?: string;
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+}) {
+  return request<{ graph_id: string; queued: boolean; message: string }>(
+    `${KNOWLEDGE_GRAPH_EXPORT_ENDPOINT}/${sessionId}`,
+    {
+      method: "POST",
+      body: { prompt, nodes, edges },
+    },
+  );
+}
+
+async function request<T>(path: string, options: RequestOptions = {}) {
+  const response = await fetch(`${BACKEND_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    let message = response.statusText;
+    try {
+      const data = await response.json();
+      message = typeof data.detail === "string" ? data.detail : message;
+    } catch {
+      // Keep the status text when the server did not send JSON.
+    }
+    throw new CanvasAIApiError(message, response.status);
+  }
+
+  return (await response.json()) as T;
+}
