@@ -1,0 +1,29 @@
+doing/
+# env
+.env
+.env.local
+.env.*.local
+
+# node / next
+node_modules/
+.next/
+.turbo/
+*.log
+.pnpm-store/
+
+# python / uv
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+*.egg-info/
+
+# os / editors
+.DS_Store
+.idea/
+.vscode/
