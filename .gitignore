@@ -3,6 +3,7 @@ doing/
 .env
 .env.local
 .env.*.local
+.python-version
 
 # node / next
 node_modules/
