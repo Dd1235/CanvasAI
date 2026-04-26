@@ -3,16 +3,18 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpenCheck, FileText, LayoutDashboard, MessageSquare, Network, Sparkles, Workflow } from "lucide-react";
+import { BookOpenCheck, FileText, LayoutDashboard, MessageSquare, Network, Plus, Sparkles, Workflow } from "lucide-react";
 
 import { listCanvasSessions } from "@/lib/canvasai-api";
 import type { SessionSummary } from "@/lib/canvasai-types";
 import { DEMO_SESSIONS } from "@/lib/mock-data";
+import { NewSessionDialog } from "@/components/dashboard/new-session-dialog";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
@@ -35,11 +37,15 @@ export function DashboardSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
   const [sessions, setSessions] = React.useState<SessionSummary[]>([]);
 
-  React.useEffect(() => {
+  const refresh = React.useCallback(() => {
     listCanvasSessions()
       .then(setSessions)
       .catch(() => setSessions([]));
-  }, [pathname]);
+  }, []);
+
+  React.useEffect(() => {
+    refresh();
+  }, [pathname, refresh]);
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -76,7 +82,16 @@ export function DashboardSidebar(props: React.ComponentProps<typeof Sidebar>) {
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>Recent sessions</SidebarGroupLabel>
+          <SidebarGroupLabel>Sessions</SidebarGroupLabel>
+          <NewSessionDialog
+            onCreated={refresh}
+            trigger={
+              <SidebarGroupAction title="New session">
+                <Plus />
+                <span className="sr-only">New session</span>
+              </SidebarGroupAction>
+            }
+          />
           <SidebarGroupContent>
             <SidebarMenu>
               {(sessions.length ? sessions : DEMO_SESSIONS).map((session) => {
@@ -85,7 +100,7 @@ export function DashboardSidebar(props: React.ComponentProps<typeof Sidebar>) {
                   <SidebarMenuItem key={session.id}>
                     <SidebarMenuButton asChild tooltip={label}>
                       <Link href={`/dashboard/canvas/${session.id}`}>
-                      <Workflow />
+                        <Workflow />
                         <span>{label}</span>
                       </Link>
                     </SidebarMenuButton>

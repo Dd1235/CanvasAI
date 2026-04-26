@@ -6,6 +6,7 @@ import { ArrowRight, Database, FileText, History, MessageSquare, Network, Sparkl
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NewSessionDialog } from "@/components/dashboard/new-session-dialog";
 import {
   Card,
   CardAction,
@@ -69,12 +70,13 @@ export function DashboardHomeClient({ initialSessions, initialDocuments }: Props
               Chat
             </Link>
           </Button>
-          <Button asChild>
+          <Button asChild variant="outline">
             <Link href={`/dashboard/canvas/${latestSession?.id ?? fallbackSession.id}`}>
               Resume latest
               <ArrowRight className="size-4" />
             </Link>
           </Button>
+          <NewSessionDialog />
         </div>
       </header>
 
@@ -148,11 +150,16 @@ export function DashboardHomeClient({ initialSessions, initialDocuments }: Props
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Recent sessions</CardTitle>
-          <CardDescription>
-            Backend sessions appear here after a canvas turn streams successfully.
-          </CardDescription>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <div className="space-y-1">
+            <CardTitle>Recent sessions</CardTitle>
+            <CardDescription>
+              Backend sessions appear here after a canvas turn streams successfully.
+            </CardDescription>
+          </div>
+          <CardAction>
+            <NewSessionDialog />
+          </CardAction>
         </CardHeader>
         <CardContent>
           <ul className="divide-border divide-y">
