@@ -1,26 +1,25 @@
 # `todo/` — Project status & extension docs
 
-Read this first if you are new to the repo or picking up an unfinished feature.
+Catalogie of what is done and what is not.
 
 ## What's in here
 
-| File | Purpose |
-|---|---|
-| [status.md](status.md) | One-screen status: what's done, what's mocked, what needs DB. Every feature, every layer. |
-| [architecture.md](architecture.md) | System diagram, request flow, LangGraph pipeline, per-feature data flow — all mermaid. |
-| [extending.md](extending.md) | "How to add an X" recipes — agent, LLM provider, route, shadcn primitive, sidebar item, DB-backed feature. |
-| [feature-canvas.md](feature-canvas.md) | Canvas turns, time machine, deck replay. Schema + DB plan. |
-| [feature-active-recall.md](feature-active-recall.md) | SM-2 cards, session-grouped review, generation pipeline, DB plan. |
-| [feature-chat.md](feature-chat.md) | Standalone learning chat, visualization tools, DB plan. |
-| [feature-documents.md](feature-documents.md) | Stubbed end-to-end: storage bucket, chunking, embeddings, pgvector, RAG. |
-| [feature-knowledge-graph.md](feature-knowledge-graph.md) | Current mock, missing endpoints, references [kd.md](kd.md). |
-| [feature-auth.md](feature-auth.md) | Supabase Auth wired; per-user data isolation is the next step. |
-| [done-v1.md](done-v1.md) | Append-only log of completed work. Don't overwrite — append. |
-| [kd.md](kd.md) | Knowledge-graph deep-dive notes (algorithm research, Neo4j vs Postgres tradeoffs). |
+| File                                                     | Purpose                                                                                                    |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| [status.md](status.md)                                   | One-screen status: what's done, what's mocked, what needs DB. Every feature, every layer.                  |
+| [architecture.md](architecture.md)                       | System diagram, request flow, LangGraph pipeline, per-feature data flow — all mermaid.                     |
+| [extending.md](extending.md)                             | "How to add an X" recipes — agent, LLM provider, route, shadcn primitive, sidebar item, DB-backed feature. |
+| [feature-canvas.md](feature-canvas.md)                   | Canvas turns, time machine, deck replay. Schema + DB plan.                                                 |
+| [feature-active-recall.md](feature-active-recall.md)     | SM-2 cards, session-grouped review, generation pipeline, DB plan.                                          |
+| [feature-chat.md](feature-chat.md)                       | Standalone learning chat, visualization tools, DB plan.                                                    |
+| [feature-documents.md](feature-documents.md)             | Stubbed end-to-end: storage bucket, chunking, embeddings, pgvector, RAG.                                   |
+| [feature-knowledge-graph.md](feature-knowledge-graph.md) | Current mock, missing endpoints, references [kd.md](kd.md).                                                |
+| [feature-auth.md](feature-auth.md)                       | Supabase Auth wired; per-user data isolation is the next step.                                             |
+| [done-v1.md](done-v1.md)                                 | Append-only log of completed work. Don't overwrite — append.                                               |
+| [kd.md](kd.md)                                           | Knowledge-graph deep-dive notes (algorithm research, Neo4j vs Postgres tradeoffs).                         |
 
 ## Reading order for a new contributor
 
-1. Root [`CONTEXT.md`](../CONTEXT.md) — what CanvasAI is, repo layout, how to run.
 2. [status.md](status.md) — what works, what's faked.
 3. [architecture.md](architecture.md) — mental model.
 4. The `feature-*` doc for whatever you're touching.
