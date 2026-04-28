@@ -30,11 +30,11 @@ export class CanvasAIApiError extends Error {
   }
 }
 
-export function backendWebSocketUrl(sessionId: string) {
+export function backendWebSocketUrl(sessionId: string, token: string) {
   const url = new URL(BACKEND_URL);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = `/ws/sessions/${sessionId}`;
-  url.search = "";
+  url.searchParams.set("token", token); // Attach for the backend query param
   return url.toString();
 }
 

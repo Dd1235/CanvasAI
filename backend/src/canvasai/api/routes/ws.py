@@ -1,19 +1,4 @@
-"""Persistent WebSocket per canvas session.
-
-Client message:
-    {"prompt": "What happens if I insert a duplicate value?",
-     "nodes": [...], "edges": [...]}
-
-Server frames (one per agent + one final):
-    {"type": "status", "agent": "agent_0_retrieval", "message": "..."}
-    ...
-    {"type": "payload", "nodes": [...], "edges": [...]}
-
-If the pipeline raises, an `{"type": "error", "message": "..."}` frame is
-sent and the loop continues — the connection stays open so the user can
-retry without reconnecting.
-"""
-
+import jwt
 from __future__ import annotations
 
 import json
@@ -30,7 +15,21 @@ _graph = build_graph()
 
 
 @router.websocket("/ws/sessions/{session_id}")
-async def session_socket(ws: WebSocket, session_id: str) -> None:
+async def session_socket(ws: WebSocket, session_id: str, token: str = Query(None)) -> None:
+    # 1. Manual WebSocket Authentication
+    settings = get_settings()
+    user_id = None
+    if not token:
+        await ws.close(code=1008, reason="Missing token")
+        return
+        
+    try:
+        payload = jwt.decode(token, settings.supabase_jwt_secret, algorithms=["HS256"], audience="authenticated")
+        user_id = payload.get("sub")
+    except Exception:
+        await ws.close(code=1008, reason="Invalid token")
+        return
+
     await ws.accept()
     try:
         while True:
@@ -65,7 +64,8 @@ async def session_socket(ws: WebSocket, session_id: str) -> None:
 
             payload = final_state.get("output_payload") or {"nodes": [], "edges": []}
             try:
-                session_store.append_turn(session_id, initial["prompt"], payload)
+                # Pass the authenticated user_id here!
+                session_store.append_turn(user_id, session_id, initial["prompt"], payload)
             except Exception:  # noqa: BLE001
                 logger.exception("session_store.append_turn failed for %s", session_id)
             await ws.send_json({"type": "payload", **payload})

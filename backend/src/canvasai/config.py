@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     supabase_url: str | None = None
     supabase_service_role_key: str | None = None
     supabase_anon_key: str | None = None
+    supabase_jwt_secret: str | None = None  # <-- Added for JWT verification
 
     # LLM provider injection
     llm_provider: str = "openai"
