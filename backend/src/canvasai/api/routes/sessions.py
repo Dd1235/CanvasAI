@@ -1,12 +1,14 @@
 from fastapi import APIRouter, HTTPException, Depends
 
 from canvasai.schemas import (
+    BranchSessionResponse,
     CreateSessionRequest,
     CreateSessionResponse,
     SessionDetail,
     SessionHistoryResponse,
     SessionSummary,
     SessionTurn,
+    ToggleCheckpointRequest,
 )
 from canvasai.storage import sessions as session_store
 from canvasai.api.deps import get_current_user_id
@@ -42,3 +44,18 @@ async def revert(session_id: str, turn_index: int, user_id: str = Depends(get_cu
     if turn is None:
         raise HTTPException(status_code=404, detail="Turn not found or access denied")
     return turn
+
+@router.post("/{session_id}/turns/{turn_index}/checkpoint", status_code=200)
+async def toggle_checkpoint(
+    session_id: str, 
+    turn_index: int, 
+    payload: ToggleCheckpointRequest,
+    user_id: str = Depends(get_current_user_id)
+):
+    session_store.set_checkpoint(user_id, session_id, turn_index, payload.is_checkpoint)
+    return {"status": "success"}
+
+@router.post("/{session_id}/turns/{turn_index}/branch", response_model=BranchSessionResponse)
+async def branch(session_id: str, turn_index: int, user_id: str = Depends(get_current_user_id)):
+    result = session_store.branch_session(user_id, session_id, turn_index)
+    return BranchSessionResponse(**result)

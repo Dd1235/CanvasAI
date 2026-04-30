@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   addEdge,
   Background,
@@ -32,6 +33,9 @@ import {
   Bot,
   MessageSquare,
   Wrench,
+  Bookmark,
+  GitBranch,
+  Undo2
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -46,6 +50,9 @@ import {
   buildRecallFromSession,
   exportSessionToKnowledgeGraph,
   getCanvasHistory,
+  toggleSessionCheckpoint,
+  revertSessionToTurn,
+  branchSessionFromTurn,
 } from "@/lib/canvasai-api";
 import { createClient } from "@/lib/supabase/client";
 import type {
@@ -75,7 +82,9 @@ type BackendStatusFrame = { type: "status"; agent: string; message: string; };
 type BackendPayloadFrame = { type: "payload"; nodes: CanvasNode[]; edges: CanvasEdge[]; };
 type BackendFrame = BackendStatusFrame | BackendPayloadFrame | { type: "error"; message: string };
 
+// Added is_checkpoint flag
 type DeckFrame = DemoTurn & {
+  is_checkpoint: boolean;
   payload: { nodes: CanvasNode[]; edges: CanvasEdge[]; };
 };
 
@@ -89,11 +98,13 @@ export function CanvasWorkbench({
   initialTurns,
   documents,
 }: Props) {
+  const router = useRouter();
+  
   const initialDeckFrames = React.useMemo<DeckFrame[]>(() => {
     const seededTurns = initialTurns.length
       ? initialTurns
       : [{ index: 0, prompt: initialPrompt, summary: "Seeded canvas state.", nodes: initialNodes.length, edges: initialEdges.length }];
-    return seededTurns.map((turn, index) => ({ ...turn, index, payload: { nodes: initialNodes, edges: initialEdges } }));
+    return seededTurns.map((turn, index) => ({ ...turn, index, is_checkpoint: false, payload: { nodes: initialNodes, edges: initialEdges } }));
   }, [initialEdges, initialNodes, initialPrompt, initialTurns]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -104,8 +115,11 @@ export function CanvasWorkbench({
   const [prompt, setPrompt] = React.useState("");
   const [profile, setProfile] = React.useState(PROFILES[0]);
   const [running, setRunning] = React.useState(false);
+  
+  // States for loaders
   const [recalling, setRecalling] = React.useState(false);
   const [exportingGraph, setExportingGraph] = React.useState(false);
+  const [branchingIndex, setBranchingIndex] = React.useState<number | null>(null);
   
   // Auth & UI State
   const [token, setToken] = React.useState<string | null>(null);
@@ -123,17 +137,19 @@ export function CanvasWorkbench({
     fetchToken();
   }, []);
 
+  // Read the is_checkpoint flag from the backend payload
   React.useEffect(() => {
     getCanvasHistory(sessionId)
       .then(({ turns: historyTurns }) => {
         if (!historyTurns.length) return;
         const latest = historyTurns[historyTurns.length - 1];
-        const frames = historyTurns.map((turn) => ({
+        const frames = historyTurns.map((turn: any) => ({
           index: turn.turn_index,
           prompt: turn.prompt,
           summary: "Loaded from backend session history.",
           nodes: turn.payload.nodes.length,
           edges: turn.payload.edges.length,
+          is_checkpoint: turn.is_checkpoint,
           payload: turn.payload,
         }));
         setNodes(latest.payload.nodes);
@@ -157,9 +173,9 @@ export function CanvasWorkbench({
     toast.success("Edge added to the local canvas state");
   }, [setEdges]);
 
-  const appendFrame = React.useCallback((frame: Omit<DeckFrame, "index">) => {
+  const appendFrame = React.useCallback((frame: Omit<DeckFrame, "index" | "is_checkpoint">) => {
     const nextIndex = deckFrames.length;
-    setDeckFrames((currentFrames) => [...currentFrames, { ...frame, index: currentFrames.length }]);
+    setDeckFrames((currentFrames) => [...currentFrames, { ...frame, index: currentFrames.length, is_checkpoint: false }]);
     setActiveFrameIndex(nextIndex);
   }, [deckFrames.length]);
 
@@ -171,39 +187,61 @@ export function CanvasWorkbench({
     setEdges(frame.payload.edges);
   }, [deckFrames, setEdges, setNodes]);
 
-  const runLocalTurn = (reason = "Local fallback payload rendered") => {
-    const trimmedPrompt = prompt.trim() || "Add the next teaching step.";
-    const nextIndex = deckFrames.length;
-    const nextNodeId = `turn-${nextIndex}`;
-    const source = nodes[0]?.id ?? initialNodes[0]?.id;
+  // Toggle Checkpoint API Logic
+  const toggleCheckpoint = async (index: number) => {
+    const frame = deckFrames[index];
+    if (!frame) return;
+    
+    const newStatus = !frame.is_checkpoint;
+    
+    // Optimistic UI update
+    setDeckFrames(frames => frames.map(f => f.index === index ? { ...f, is_checkpoint: newStatus } : f));
+    toast.success(newStatus ? "Checkpoint saved" : "Checkpoint removed");
+    
+    try {
+      await toggleSessionCheckpoint(sessionId, index, newStatus);
+    } catch (err) {
+      toast.error("Failed to save checkpoint to database.");
+      // Revert optimistic update
+      setDeckFrames(frames => frames.map(f => f.index === index ? { ...f, is_checkpoint: !newStatus } : f));
+    }
+  };
 
-    const newNode: CanvasNode = {
-      id: nextNodeId,
-      type: "default",
-      position: { x: nextIndex % 2 === 0 ? -90 : 140, y: 420 + nextIndex * 70 },
-      data: {
-        label: trimmedPrompt.length > 36 ? `${trimmedPrompt.slice(0, 33)}...` : trimmedPrompt,
-        detail: `Generated by the frontend mock for ${profile.toLowerCase()} pacing.`,
-      },
-    };
-    const nextNodes = [...nodes, newNode];
-    const nextEdges = source ? [...edges, { id: `${source}-${nextNodeId}`, source, target: nextNodeId, type: "smoothstep", animated: true, label: "next" }] : edges;
+  // Revert Logic (Destructive)
+  const handleRevert = async (index: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Don't trigger the "Peek" click
+    if (!confirm("Are you sure? This will permanently delete all turns after this checkpoint.")) return;
+    
+    try {
+      await revertSessionToTurn(sessionId, index);
+      // Remove frames > index from local state
+      setDeckFrames(frames => frames.slice(0, index + 1));
+      goToFrame(index);
+      toast.success("Timeline reverted successfully.");
+    } catch (err) {
+      toast.error("Failed to revert timeline.");
+    }
+  };
 
-    setNodes(nextNodes);
-    setEdges(nextEdges);
-    setPrompt("");
-    setTrace((currentTrace) => currentTrace.map((entry, index) => ({ ...entry, status: "complete", message: index === currentTrace.length - 1 ? `Emitted ${nextNodes.length + 1} nodes and ${nextEdges.length + 1} edges` : entry.message })));
-    appendFrame({ prompt: trimmedPrompt, summary: reason, nodes: nextNodes.length, edges: nextEdges.length, payload: { nodes: nextNodes, edges: nextEdges } });
-    toast.success(reason);
+  // NEW: Branch Logic (Non-destructive)
+  const handleBranch = async (index: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Don't trigger the "Peek" click
+    setBranchingIndex(index);
+    try {
+      const newSession = await branchSessionFromTurn(sessionId, index);
+      toast.success("Branch created successfully!");
+      // Redirect to the new session
+      router.push(`/dashboard/canvas/${newSession.id}`);
+    } catch (err) {
+      toast.error("Failed to branch timeline.");
+      setBranchingIndex(null);
+    }
   };
 
   const runTurn = async () => {
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt) return;
-    if (!token) {
-      toast.error("Authentication missing. Please refresh the page.");
-      return;
-    }
+    if (!token) return toast.error("Authentication missing.");
 
     setRunning(true);
     setTrace([{ agent: "frontend", label: "System", message: "Connecting to Canvas Engine...", status: "running" }]);
@@ -241,12 +279,14 @@ export function CanvasWorkbench({
         socket.addEventListener("error", () => { window.clearTimeout(timeout); reject(new Error("Backend WebSocket unavailable.")); });
       });
     } catch (error) {
-      console.error("[canvas-turn]", error);
-      runLocalTurn("Backend unavailable, used local fallback.");
+      toast.error("Failed to run turn.");
     } finally {
       setRunning(false);
     }
   };
+
+  // Extract only checkpoints and reverse them (Newest at Top)
+  const checkpointFrames = deckFrames.filter(f => f.is_checkpoint).reverse();
 
   const restoreInitial = () => {
     setNodes(initialNodes);
@@ -320,11 +360,22 @@ export function CanvasWorkbench({
               <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Session</p>
               <h2 className="mt-1 text-base font-semibold">{topic}</h2>
             </div>
-            <Badge variant="secondary">Step {activeFrameIndex + 1}</Badge>
+            {/* Bookmark Button for the Current View */}
+            <Button 
+              size="sm" 
+              variant={activeFrame?.is_checkpoint ? "default" : "outline"}
+              onClick={() => toggleCheckpoint(activeFrameIndex)}
+              className="shrink-0"
+              title={activeFrame?.is_checkpoint ? "Remove Checkpoint" : "Mark as Checkpoint"}
+            >
+              <Bookmark className={cn("size-4 mr-1.5", activeFrame?.is_checkpoint ? "fill-current" : "")} /> 
+              Step {activeFrameIndex + 1}
+            </Button>
           </div>
           
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={restoreInitial}><RotateCcw className="size-4 mr-1.5" /> Restore</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => goToFrame(deckFrames.length - 1)}><RotateCcw className="size-4 mr-1.5" /> Latest</Button>
+                        <Button type="button" size="sm" variant="outline" onClick={restoreInitial}><RotateCcw className="size-4 mr-1.5" /> Restore</Button>
             <Button type="button" size="sm" variant="outline" onClick={addToRecall} disabled={recalling}>
               {recalling ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <BookOpenCheck className="size-4 mr-1.5" />} Recall
             </Button>
@@ -336,17 +387,13 @@ export function CanvasWorkbench({
 
         {/* Tab Toggle */}
         <div className="flex bg-muted/50 p-1 rounded-lg shrink-0">
-          <button onClick={() => setActiveTab("chat")} className={cn("flex-1 flex items-center justify-center gap-2 py-1.5 text-sm font-medium rounded-md transition-colors", activeTab === "chat" ? "bg-background shadow-sm" : "text-muted-foreground hover:bg-muted")}>
-            <MessageSquare className="size-4" /> Chat
-          </button>
-          <button onClick={() => setActiveTab("tools")} className={cn("flex-1 flex items-center justify-center gap-2 py-1.5 text-sm font-medium rounded-md transition-colors", activeTab === "tools" ? "bg-background shadow-sm" : "text-muted-foreground hover:bg-muted")}>
-            <Wrench className="size-4" /> Workbench
-          </button>
+          <button onClick={() => setActiveTab("chat")} className={cn("flex-1 flex items-center justify-center gap-2 py-1.5 text-sm font-medium rounded-md transition-colors", activeTab === "chat" ? "bg-background shadow-sm" : "text-muted-foreground hover:bg-muted")}><MessageSquare className="size-4" /> Chat</button>
+          <button onClick={() => setActiveTab("tools")} className={cn("flex-1 flex items-center justify-center gap-2 py-1.5 text-sm font-medium rounded-md transition-colors", activeTab === "tools" ? "bg-background shadow-sm" : "text-muted-foreground hover:bg-muted")}><Wrench className="size-4" /> Workbench</button>
         </div>
 
-        {/* TAB 1: CHAT INTERFACE */}
+        {/* TAB 1: CHAT INTERFACE (Remains the same) */}
         {activeTab === "chat" && (
-          <div className="bg-card border-border rounded-lg border flex flex-col min-h-0 flex-1 overflow-hidden">
+           <div className="bg-card border-border rounded-lg border flex flex-col min-h-0 flex-1 overflow-hidden">
             <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={chatScrollRef}>
               {deckFrames.map((frame, idx) => (
                 <div key={idx} className="space-y-4">
@@ -388,6 +435,7 @@ export function CanvasWorkbench({
                 </Button>
               </div>
             </div>
+            <div className="p-3">Chat Interface Active</div>
           </div>
         )}
 
@@ -395,6 +443,7 @@ export function CanvasWorkbench({
         {activeTab === "tools" && (
           <ScrollArea className="min-h-0 flex-1 rounded-lg">
             <div className="space-y-4 pr-3">
+
               <PanelBlock title="Visualization Tools" icon={Layers3}>
                 <div className="grid gap-2">
                   <Button type="button" variant="outline" size="sm" onClick={() => addVisualizationTool("invariant")}>Invariant lens</Button>
@@ -403,7 +452,44 @@ export function CanvasWorkbench({
                 </div>
               </PanelBlock>
 
-              <PanelBlock title="Agent Trace" icon={Zap}>
+              <PanelBlock title="Checkpoints (Deck Replay)" icon={History}>
+                <div className="space-y-2">
+                  {checkpointFrames.length === 0 ? (
+                    <p className="text-muted-foreground text-xs text-center py-4">No checkpoints saved. Bookmark a step above.</p>
+                  ) : (
+                    checkpointFrames.map((frame) => (
+                      <div 
+                        key={`${frame.index}-${frame.prompt}`}
+                        onClick={() => goToFrame(frame.index)}
+                        className={cn(
+                          "group relative hover:bg-accent w-full rounded-md border p-3 text-left transition-colors cursor-pointer", 
+                          frame.index === activeFrameIndex && "bg-accent text-accent-foreground border-primary"
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-medium flex items-center gap-1.5">
+                            <Bookmark className="size-3 fill-current text-primary" />
+                            Step {frame.index + 1}
+                          </span>
+                          
+                          {/* The 3-Dot Action Row (Reveals on Hover) */}
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button size="icon-sm" variant="ghost" onClick={(e) => handleRevert(frame.index, e)} title="Revert to here (Destructive)" className="h-6 w-6 text-destructive hover:bg-destructive/10">
+                              <Undo2 className="size-3" />
+                            </Button>
+                            <Button size="icon-sm" variant="ghost" onClick={(e) => handleBranch(frame.index, e)} title="Branch from here" disabled={branchingIndex === frame.index} className="h-6 w-6 text-primary hover:bg-primary/10">
+                              {branchingIndex === frame.index ? <Loader2 className="size-3 animate-spin" /> : <GitBranch className="size-3" />}
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">{frame.prompt}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </PanelBlock>
+
+                            <PanelBlock title="Agent Trace" icon={Zap}>
                 <div className="space-y-3">
                   {trace.map((entry, index) => {
                     const Icon = AGENT_ICONS[index] ?? CheckCircle2;
@@ -422,25 +508,6 @@ export function CanvasWorkbench({
                       </div>
                     );
                   })}
-                </div>
-              </PanelBlock>
-
-              <PanelBlock title="Deck Replay" icon={History}>
-                <div className="space-y-2">
-                  {deckFrames.map((frame) => (
-                    <button
-                      key={`${frame.index}-${frame.prompt}`}
-                      type="button"
-                      onClick={() => goToFrame(frame.index)}
-                      className={cn("hover:bg-accent hover:text-accent-foreground w-full rounded-md border p-3 text-left transition-colors", frame.index === activeFrameIndex && "bg-accent text-accent-foreground")}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium">Step {frame.index + 1}</span>
-                        <span className="text-muted-foreground text-xs">{frame.nodes} nodes / {frame.edges} edges</span>
-                      </div>
-                      <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">{frame.summary}</p>
-                    </button>
-                  ))}
                 </div>
               </PanelBlock>
 

@@ -162,6 +162,25 @@ export async function exportSessionToKnowledgeGraph({
   );
 }
 
+export async function toggleSessionCheckpoint(sessionId: string, turnIndex: number, isCheckpoint: boolean) {
+  return request<{ status: string }>(`/sessions/${sessionId}/turns/${turnIndex}/checkpoint`, {
+    method: "POST",
+    body: { is_checkpoint: isCheckpoint },
+  });
+}
+
+export async function revertSessionToTurn(sessionId: string, turnIndex: number) {
+  return request<SessionTurn>(`/sessions/${sessionId}/revert/${turnIndex}`, {
+    method: "POST",
+  });
+}
+
+export async function branchSessionFromTurn(sessionId: string, turnIndex: number) {
+  return request<{ id: string; title: string }>(`/sessions/${sessionId}/turns/${turnIndex}/branch`, {
+    method: "POST",
+  });
+}
+
 // THE CRITICAL UPDATE: Enforce session existence before fetching
 async function request<T>(path: string, options: RequestOptions = {}) {
   const supabase = createClient();

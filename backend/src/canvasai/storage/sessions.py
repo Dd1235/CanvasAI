@@ -1,4 +1,5 @@
 from __future__ import annotations
+import uuid
 from typing import Any
 from datetime import UTC, datetime
 
@@ -113,7 +114,8 @@ def history(user_id: str, session_id: str) -> list[SessionTurn]:
             prompt=t["prompt"],
             payload=CanvasPayload.model_validate(t["payload"]),
             turn_index=t["turn_index"],
-            created_at=datetime.fromisoformat(t["created_at"])
+            created_at=datetime.fromisoformat(t["created_at"]),
+            is_checkpoint=t.get("is_checkpoint", False) # NEW
         ) for t in turns_res.data
     ]
 
@@ -129,3 +131,44 @@ def revert_to(user_id: str, session_id: str, turn_index: int) -> SessionTurn | N
     
     turns = history(user_id, session_id)
     return turns[-1] if turns else None
+
+def set_checkpoint(user_id: str, session_id: str, turn_index: int, is_checkpoint: bool) -> None:
+    db = get_supabase()
+    # Verify ownership
+    session_res = db.table("canvas_sessions").select("id").eq("id", session_id).eq("user_id", user_id).execute()
+    if not session_res.data:
+        raise ValueError("Session not found")
+        
+    db.table("canvas_turns").update({"is_checkpoint": is_checkpoint}).eq("session_id", session_id).eq("turn_index", turn_index).execute()
+
+def branch_session(user_id: str, session_id: str, turn_index: int) -> dict[str, str]:
+    db = get_supabase()
+    orig = db.table("canvas_sessions").select("*").eq("id", session_id).eq("user_id", user_id).execute()
+    if not orig.data:
+        raise ValueError("Session not found")
+        
+    # 1. Create the new session
+    new_id = str(uuid.uuid4())
+    new_title = f"{orig.data[0]['title']} (Branch)"
+    db.table("canvas_sessions").insert({
+        "id": new_id, 
+        "user_id": user_id, 
+        "title": new_title
+    }).execute()
+    
+    # 2. Fetch all turns up to the checkpoint
+    turns = db.table("canvas_turns").select("*").eq("session_id", session_id).lte("turn_index", turn_index).execute()
+    
+    # 3. Duplicate them into the new session
+    new_turns = []
+    for t in turns.data:
+        # We delete the primary key and created_at so Supabase generates new ones natively
+        if "id" in t: del t["id"]
+        if "created_at" in t: del t["created_at"]
+        t["session_id"] = new_id
+        new_turns.append(t)
+        
+    if new_turns:
+        db.table("canvas_turns").insert(new_turns).execute()
+        
+    return {"id": new_id, "title": new_title}
