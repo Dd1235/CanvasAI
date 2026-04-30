@@ -11,6 +11,7 @@ import type {
   SessionTurn,
   VisualizationTool,
 } from "@/lib/canvasai-types";
+import { createClient } from "@/lib/supabase/client";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 export const KNOWLEDGE_GRAPH_ENDPOINT = "/knowledge-graph/current";
@@ -161,13 +162,23 @@ export async function exportSessionToKnowledgeGraph({
   );
 }
 
+// THE CRITICAL UPDATE: Injecting the Supabase JWT into every request
 async function request<T>(path: string, options: RequestOptions = {}) {
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+
+  const headers = new Headers({
+    "Content-Type": "application/json",
+    ...options.headers,
+  });
+
+  if (session?.access_token) {
+    headers.set("Authorization", `Bearer ${session.access_token}`);
+  }
+
   const response = await fetch(`${BACKEND_URL}${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
+    headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     cache: "no-store",
   });
