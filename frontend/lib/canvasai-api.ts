@@ -162,19 +162,21 @@ export async function exportSessionToKnowledgeGraph({
   );
 }
 
-// THE CRITICAL UPDATE: Injecting the Supabase JWT into every request
+// THE CRITICAL UPDATE: Enforce session existence before fetching
 async function request<T>(path: string, options: RequestOptions = {}) {
   const supabase = createClient();
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+  if (sessionError || !session?.access_token) {
+    throw new CanvasAIApiError("Authentication required. Please log in.", 401);
+  }
 
   const headers = new Headers({
     "Content-Type": "application/json",
     ...options.headers,
   });
 
-  if (session?.access_token) {
-    headers.set("Authorization", `Bearer ${session.access_token}`);
-  }
+  headers.set("Authorization", `Bearer ${session.access_token}`);
 
   const response = await fetch(`${BACKEND_URL}${path}`, {
     ...options,

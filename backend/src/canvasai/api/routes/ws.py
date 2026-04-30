@@ -4,12 +4,11 @@ from __future__ import annotations
 import json
 import logging
 
-import jwt
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
-from canvasai.config import get_settings
 from canvasai.graph.builder import build_graph
 from canvasai.storage import sessions as session_store
+from canvasai.storage.client import get_supabase
 
 router = APIRouter(tags=["ws"])
 logger = logging.getLogger(__name__)
@@ -18,8 +17,7 @@ _graph = build_graph()
 
 @router.websocket("/ws/sessions/{session_id}")
 async def session_socket(ws: WebSocket, session_id: str, token: str | None = Query(default=None)) -> None:
-    # 1. Manual WebSocket Authentication
-    settings = get_settings()
+    # 1. Official Supabase WebSocket Authentication
     user_id = None
     
     if not token:
@@ -27,16 +25,15 @@ async def session_socket(ws: WebSocket, session_id: str, token: str | None = Que
         return
 
     try:
-        payload = jwt.decode(
-            token, 
-            settings.supabase_jwt_secret, 
-            algorithms=["HS256"], 
-            audience="authenticated"
-        )
-        user_id = payload.get("sub")
-        if not user_id:
-            raise ValueError("No user_id in token")
-    except Exception:
+        db = get_supabase()
+        user_response = db.auth.get_user(token)
+        
+        if not user_response or not user_response.user:
+            raise ValueError("Invalid user session")
+            
+        user_id = user_response.user.id
+    except Exception as e:
+        logger.error(f"WebSocket Auth Failed: {str(e)}")
         await ws.close(code=1008, reason="Invalid token")
         return
 
@@ -46,6 +43,7 @@ async def session_socket(ws: WebSocket, session_id: str, token: str | None = Que
     try:
         while True:
             raw = await ws.receive_text()
+            # ... [The rest of your while loop stays exactly the same!] ...
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:

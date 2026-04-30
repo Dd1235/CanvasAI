@@ -26,15 +26,17 @@ def ensure_session(user_id: str, session_id: str, title: str | None = None) -> N
     existing = db.table("canvas_sessions").select("id").eq("id", session_id).eq("user_id", user_id).execute()
     
     if not existing.data:
-        # If it doesn't exist, create it (handles the frontend mock-data fallback edge case safely)
+        # If it doesn't exist (e.g., local fallback), create it with the prompt as a fallback title
         db.table("canvas_sessions").insert({
             "id": session_id,
             "user_id": user_id,
             "title": title or session_id
         }).execute()
-    elif title:
-        # Update title if provided
-        db.table("canvas_sessions").update({"title": title, "updated_at": _now().isoformat()}).eq("id", session_id).execute()
+    else:
+        # It exists! ONLY update the timestamp. Do NOT overwrite the title.
+        db.table("canvas_sessions").update({
+            "updated_at": _now().isoformat()
+        }).eq("id", session_id).execute()
 
 def list_sessions(user_id: str) -> list[SessionSummary]:
     db = get_supabase()

@@ -89,28 +89,22 @@ def add_message(
     user_id: str, session_id: str, role: Literal["user", "assistant", "system"], content: str
 ) -> ChatMessage:
     db = get_supabase()
-    session_res = (
-        db.table("chat_sessions")
-        .select("id, title")
-        .eq("id", session_id)
-        .eq("user_id", user_id)
-        .execute()
-    )
+    
+    session_res = db.table("chat_sessions").select("id").eq("id", session_id).eq("user_id", user_id).execute()
     if not session_res.data:
         raise ValueError("Session not found or access denied")
 
     now = _now()
+    
+    # 1. Insert the message
     msg_res = db.table("chat_messages").insert(
         {"session_id": session_id, "role": role, "content": content}
     ).execute()
 
-    title = session_res.data[0]["title"]
-    if role == "user" and title == "Learning chat":
-        title = content[:48] or title
-
-    db.table("chat_sessions").update(
-        {"updated_at": now.isoformat(), "title": title}
-    ).eq("id", session_id).execute()
+    # 2. Update the session timestamp (Title remains untouched)
+    db.table("chat_sessions").update({
+        "updated_at": now.isoformat()
+    }).eq("id", session_id).execute()
 
     m = msg_res.data[0]
     return ChatMessage(
