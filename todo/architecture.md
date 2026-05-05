@@ -191,6 +191,6 @@ CanvasAI/
         ├── agents/             ← base + 4 agents (one per file)
         ├── graph/              ← state.py + builder.py
         ├── llm/                ← provider.py + openai_provider.py
-        ├── storage/            ← in-memory stores (sessions, chat, active_recall, documents, supabase_client)
+        ├── storage/            ← in-memory stores (sessions, chat, active_recall, documents, client)
         └── inngest_app/        ← functions.py (one no-op ping)
 ```

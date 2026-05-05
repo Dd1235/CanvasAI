@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime, timedelta
 
 from canvasai.schemas import (
@@ -10,86 +9,108 @@ from canvasai.schemas import (
     ActiveRecallStats,
     SessionSummary,
 )
-
-_CARDS: dict[str, ActiveRecallCard] = {}
+from canvasai.storage.client import get_supabase
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def list_cards(session_id: str | None = None, due_only: bool = False) -> list[ActiveRecallCard]:
-    now = _now()
-    cards = list(_CARDS.values())
+def list_cards(user_id: str, session_id: str | None = None, due_only: bool = False) -> list[ActiveRecallCard]:
+    db = get_supabase()
+    query = db.table("recall_cards").select("*").eq("user_id", user_id)
+
     if session_id:
-        cards = [card for card in cards if card.session_id == session_id]
+        query = query.eq("session_id", session_id)
     if due_only:
-        cards = [card for card in cards if card.due_at <= now]
-    return sorted(cards, key=lambda card: card.due_at)
+        query = query.lte("due_at", _now().isoformat())
+
+    res = query.execute()
+    return [_map_card(c) for c in res.data]
 
 
-def stats() -> ActiveRecallStats:
-    now = _now()
-    session_ids = {card.session_id for card in _CARDS.values()}
+def stats(user_id: str) -> ActiveRecallStats:
+    db = get_supabase()
+    now_str = _now().isoformat()
+
+    total_res = db.table("recall_cards").select("id", count="exact").eq("user_id", user_id).execute()
+    due_res = db.table("recall_cards").select("id", count="exact").eq("user_id", user_id).lte("due_at", now_str).execute()
+
+    sessions_res = db.table("recall_cards").select("session_id").eq("user_id", user_id).execute()
+    distinct_sessions = len(set(row["session_id"] for row in sessions_res.data))
+
     return ActiveRecallStats(
-        total_cards=len(_CARDS),
-        due_cards=sum(1 for card in _CARDS.values() if card.due_at <= now),
-        sessions=len(session_ids),
+        total_cards=total_res.count or 0,
+        due_cards=due_res.count or 0,
+        sessions=distinct_sessions,
     )
 
 
 def list_session_groups(
+    user_id: str,
     sessions: list[SessionSummary],
     *,
     due_only: bool = False,
 ) -> list[ActiveRecallSessionGroup]:
-    cards = list_cards(due_only=due_only)
+    cards = list_cards(user_id, due_only=due_only)
     summaries = {session.id: session for session in sessions}
+    
     grouped: dict[str, list[ActiveRecallCard]] = {}
     for card in cards:
         grouped.setdefault(card.session_id, []).append(card)
 
     now = _now()
     groups: list[ActiveRecallSessionGroup] = []
+    
     for session_id, session_cards in grouped.items():
         summary = summaries.get(session_id)
         updated_at = summary.updated_at if summary else max(card.updated_at for card in session_cards)
-        groups.append(
-            ActiveRecallSessionGroup(
-                session_id=session_id,
-                session_title=summary.title if summary else session_id,
-                updated_at=updated_at,
-                card_count=len(session_cards),
-                due_count=sum(1 for card in session_cards if card.due_at <= now),
-                cards=session_cards,
+        due_count = sum(1 for card in session_cards if card.due_at <= now)
+        
+        if not due_only or due_count > 0:
+            groups.append(
+                ActiveRecallSessionGroup(
+                    session_id=session_id,
+                    session_title=summary.title if summary else session_id,
+                    updated_at=updated_at,
+                    card_count=len(session_cards),
+                    due_count=due_count,
+                    cards=session_cards,
+                )
             )
-        )
 
     return sorted(groups, key=lambda group: group.updated_at, reverse=True)
 
 
 def replace_for_session(
+    user_id: str,
     session_id: str,
     drafts: list[ActiveRecallCardDraft],
 ) -> tuple[list[ActiveRecallCard], int]:
-    replaced = delete_session(session_id)
-    now = _now()
+    db = get_supabase()
+    replaced = delete_session(user_id, session_id)
+    now = _now().isoformat()
 
-    cards = [
-        _new_card(
-            session_id=session_id,
-            front=draft.front,
-            back=draft.back,
-            tags=draft.tags,
-            now=now,
-        )
-        for draft in drafts
+    if not drafts:
+        return [], replaced
+
+    payload = [
+        {
+            "user_id": user_id,
+            "session_id": session_id,
+            "front": d.front,
+            "back": d.back,
+            "tags": d.tags,
+            "ease_factor": 2.5,
+            "interval_days": 0,
+            "repetitions": 0,
+            "due_at": now,
+        }
+        for d in drafts
     ]
 
-    for card in cards:
-        _CARDS[card.id] = card
-
-    return cards, replaced
+    insert_res = db.table("recall_cards").insert(payload).execute()
+    return [_map_card(c) for c in insert_res.data], replaced
 
 
 def fallback_drafts(
@@ -104,10 +125,7 @@ def fallback_drafts(
     return [
         ActiveRecallCardDraft(
             front=f"Explain the main invariant in {topic}.",
-            back=(
-                f"Use the prompt '{session_prompt}' and account for "
-                f"{node_count} nodes / {edge_count} edges."
-            ),
+            back=f"Use the prompt '{session_prompt}' and account for {node_count} nodes / {edge_count} edges.",
             tags=["session", "canvas", "invariant"],
         ),
         ActiveRecallCardDraft(
@@ -123,75 +141,73 @@ def fallback_drafts(
     ]
 
 
-def delete_session(session_id: str) -> int:
-    ids = [card_id for card_id, card in _CARDS.items() if card.session_id == session_id]
-    for card_id in ids:
-        del _CARDS[card_id]
-    return len(ids)
+def delete_session(user_id: str, session_id: str) -> int:
+    db = get_supabase()
+    res = db.table("recall_cards").delete().eq("session_id", session_id).eq("user_id", user_id).execute()
+    return len(res.data)
 
 
-def review(card_id: str, rating: str) -> ActiveRecallCard | None:
-    card = _CARDS.get(card_id)
-    if card is None:
+def review(user_id: str, card_id: str, rating: str) -> ActiveRecallCard | None:
+    db = get_supabase()
+    card_res = db.table("recall_cards").select("*").eq("id", card_id).eq("user_id", user_id).execute()
+    
+    if not card_res.data:
         return None
 
-    quality_by_rating = {
-        "again": 1,
-        "hard": 3,
-        "good": 4,
-        "easy": 5,
-    }
-    quality = quality_by_rating[rating]
-    now = _now()
+    card = card_res.data[0]
+    quality = {"again": 1, "hard": 3, "good": 4, "easy": 5}.get(rating, 1)
+
+    repetitions = card["repetitions"]
+    ease_factor = float(card["ease_factor"])
+    interval_days = card["interval_days"]
 
     if quality < 3:
         repetitions = 0
-        interval = 1
+        interval_days = 1
+        ease_factor = max(1.3, ease_factor - 0.2)
     else:
-        repetitions = card.repetitions + 1
-        if repetitions == 1:
-            interval = 1
-        elif repetitions == 2:
-            interval = 6
+        if repetitions == 0:
+            interval_days = 1
+        elif repetitions == 1:
+            interval_days = 6
         else:
-            interval = max(1, round(card.interval_days * card.ease_factor))
+            interval_days = int(round(interval_days * ease_factor))
 
-    ease = card.ease_factor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
-    ease = max(1.3, ease)
-    if rating == "easy":
-        interval = max(interval + 2, round(interval * 1.3))
-    if rating == "hard":
-        interval = max(1, round(interval * 0.6))
+        repetitions += 1
+        ease_factor = ease_factor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
+        ease_factor = max(1.3, ease_factor)
 
-    updated = card.model_copy(
-        update={
-            "ease_factor": round(ease, 2),
-            "interval_days": interval,
-            "repetitions": repetitions,
-            "due_at": now + timedelta(days=interval),
-            "last_reviewed_at": now,
-            "updated_at": now,
-        }
-    )
-    _CARDS[card_id] = updated
-    return updated
+        if rating == "easy":
+            interval_days = max(interval_days, 2)
+            interval_days = int(round(interval_days * 1.3))
+
+    now = _now()
+    due_at = now + timedelta(days=interval_days)
+
+    update_res = db.table("recall_cards").update({
+        "repetitions": repetitions,
+        "interval_days": interval_days,
+        "ease_factor": ease_factor,
+        "due_at": due_at.isoformat(),
+        "last_reviewed_at": now.isoformat(),
+        "updated_at": now.isoformat()
+    }).eq("id", card_id).execute()
+
+    return _map_card(update_res.data[0])
 
 
-def _new_card(
-    *,
-    session_id: str,
-    front: str,
-    back: str,
-    tags: list[str],
-    now: datetime,
-) -> ActiveRecallCard:
+def _map_card(row: dict) -> ActiveRecallCard:
     return ActiveRecallCard(
-        id=str(uuid.uuid4()),
-        session_id=session_id,
-        front=front,
-        back=back,
-        tags=tags,
-        due_at=now,
-        created_at=now,
-        updated_at=now,
+        id=row["id"],
+        session_id=row["session_id"],
+        front=row["front"],
+        back=row["back"],
+        tags=row["tags"],
+        ease_factor=float(row["ease_factor"]),
+        interval_days=row["interval_days"],
+        repetitions=row["repetitions"],
+        due_at=datetime.fromisoformat(row["due_at"]),
+        last_reviewed_at=datetime.fromisoformat(row["last_reviewed_at"]) if row.get("last_reviewed_at") else None,
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"])
     )

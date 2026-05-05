@@ -1,28 +1,14 @@
-"""Persistent WebSocket per canvas session.
-
-Client message:
-    {"prompt": "What happens if I insert a duplicate value?",
-     "nodes": [...], "edges": [...]}
-
-Server frames (one per agent + one final):
-    {"type": "status", "agent": "agent_0_retrieval", "message": "..."}
-    ...
-    {"type": "payload", "nodes": [...], "edges": [...]}
-
-If the pipeline raises, an `{"type": "error", "message": "..."}` frame is
-sent and the loop continues — the connection stays open so the user can
-retry without reconnecting.
-"""
-
+"""Persistent WebSocket per canvas session."""
 from __future__ import annotations
 
 import json
 import logging
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from canvasai.graph.builder import build_graph
 from canvasai.storage import sessions as session_store
+from canvasai.storage.client import get_supabase
 
 router = APIRouter(tags=["ws"])
 logger = logging.getLogger(__name__)
@@ -30,11 +16,34 @@ _graph = build_graph()
 
 
 @router.websocket("/ws/sessions/{session_id}")
-async def session_socket(ws: WebSocket, session_id: str) -> None:
+async def session_socket(ws: WebSocket, session_id: str, token: str | None = Query(default=None)) -> None:
+    # 1. Official Supabase WebSocket Authentication
+    user_id = None
+    
+    if not token:
+        await ws.close(code=1008, reason="Missing token")
+        return
+
+    try:
+        db = get_supabase()
+        user_response = db.auth.get_user(token)
+        
+        if not user_response or not user_response.user:
+            raise ValueError("Invalid user session")
+            
+        user_id = user_response.user.id
+    except Exception as e:
+        logger.error(f"WebSocket Auth Failed: {str(e)}")
+        await ws.close(code=1008, reason="Invalid token")
+        return
+
+    # Accept connection if token is valid
     await ws.accept()
+    
     try:
         while True:
             raw = await ws.receive_text()
+            # ... [The rest of your while loop stays exactly the same!] ...
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
@@ -65,9 +74,12 @@ async def session_socket(ws: WebSocket, session_id: str) -> None:
 
             payload = final_state.get("output_payload") or {"nodes": [], "edges": []}
             try:
-                session_store.append_turn(session_id, initial["prompt"], payload)
+                # Store the turn using the authenticated user_id
+                session_store.append_turn(user_id, session_id, initial["prompt"], payload)
             except Exception:  # noqa: BLE001
                 logger.exception("session_store.append_turn failed for %s", session_id)
+                
             await ws.send_json({"type": "payload", **payload})
+            
     except WebSocketDisconnect:
         return

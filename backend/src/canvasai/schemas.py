@@ -43,7 +43,15 @@ class SessionTurn(BaseModel):
     payload: CanvasPayload
     turn_index: int
     created_at: datetime
-
+    is_checkpoint: bool = False
+    
+    
+class BranchSessionResponse(BaseModel):
+    id: str
+    title: str
+    
+class ToggleCheckpointRequest(BaseModel):
+    is_checkpoint: bool
 
 class SessionSummary(BaseModel):
     id: str

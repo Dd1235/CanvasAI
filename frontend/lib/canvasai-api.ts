@@ -11,6 +11,7 @@ import type {
   SessionTurn,
   VisualizationTool,
 } from "@/lib/canvasai-types";
+import { createClient } from "@/lib/supabase/client";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 export const KNOWLEDGE_GRAPH_ENDPOINT = "/knowledge-graph/current";
@@ -30,11 +31,11 @@ export class CanvasAIApiError extends Error {
   }
 }
 
-export function backendWebSocketUrl(sessionId: string) {
+export function backendWebSocketUrl(sessionId: string, token: string) {
   const url = new URL(BACKEND_URL);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = `/ws/sessions/${sessionId}`;
-  url.search = "";
+  url.searchParams.set("token", token); // Attach for the backend query param
   return url.toString();
 }
 
@@ -161,13 +162,44 @@ export async function exportSessionToKnowledgeGraph({
   );
 }
 
+export async function toggleSessionCheckpoint(sessionId: string, turnIndex: number, isCheckpoint: boolean) {
+  return request<{ status: string }>(`/sessions/${sessionId}/turns/${turnIndex}/checkpoint`, {
+    method: "POST",
+    body: { is_checkpoint: isCheckpoint },
+  });
+}
+
+export async function revertSessionToTurn(sessionId: string, turnIndex: number) {
+  return request<SessionTurn>(`/sessions/${sessionId}/revert/${turnIndex}`, {
+    method: "POST",
+  });
+}
+
+export async function branchSessionFromTurn(sessionId: string, turnIndex: number) {
+  return request<{ id: string; title: string }>(`/sessions/${sessionId}/turns/${turnIndex}/branch`, {
+    method: "POST",
+  });
+}
+
+// THE CRITICAL UPDATE: Enforce session existence before fetching
 async function request<T>(path: string, options: RequestOptions = {}) {
+  const supabase = createClient();
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+  if (sessionError || !session?.access_token) {
+    throw new CanvasAIApiError("Authentication required. Please log in.", 401);
+  }
+
+  const headers = new Headers({
+    "Content-Type": "application/json",
+    ...options.headers,
+  });
+
+  headers.set("Authorization", `Bearer ${session.access_token}`);
+
   const response = await fetch(`${BACKEND_URL}${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
+    headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     cache: "no-store",
   });

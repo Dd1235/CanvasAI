@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import ValidationError
 
+from canvasai.api.deps import get_current_user_id
 from canvasai.llm.provider import get_provider
 from canvasai.schemas import (
     ActiveRecallBuildRequest,
@@ -24,32 +25,44 @@ router = APIRouter(prefix="/active-recall", tags=["active-recall"])
 
 
 @router.get("/cards")
-async def list_cards(session_id: str | None = None, due_only: bool = False) -> list[ActiveRecallCard]:
-    return recall_store.list_cards(session_id=session_id, due_only=due_only)
+async def list_cards(
+    session_id: str | None = None, 
+    due_only: bool = False,
+    user_id: str = Depends(get_current_user_id)
+) -> list[ActiveRecallCard]:
+    return recall_store.list_cards(user_id, session_id=session_id, due_only=due_only)
 
 
 @router.get("/sessions")
-async def list_session_groups(due_only: bool = False) -> list[ActiveRecallSessionGroup]:
-    return recall_store.list_session_groups(session_store.list_sessions(), due_only=due_only)
+async def list_session_groups(
+    due_only: bool = False,
+    user_id: str = Depends(get_current_user_id)
+) -> list[ActiveRecallSessionGroup]:
+    user_sessions = session_store.list_sessions(user_id)
+    return recall_store.list_session_groups(user_id, user_sessions, due_only=due_only)
 
 
 @router.get("/stats")
-async def stats() -> ActiveRecallStats:
-    return recall_store.stats()
+async def stats(user_id: str = Depends(get_current_user_id)) -> ActiveRecallStats:
+    return recall_store.stats(user_id)
 
 
 @router.post("/from-session/{session_id}")
 async def build_from_session(
     session_id: str,
     payload: ActiveRecallBuildRequest | None = None,
+    user_id: str = Depends(get_current_user_id)
 ) -> ActiveRecallBuildResponse:
-    session = session_store.get_session(session_id)
+    session = session_store.get_session(user_id, session_id)
     turns = session.turns if session else []
     fallback_payload = None
+    
     if payload:
         fallback_payload = CanvasPayload(nodes=payload.nodes, edges=payload.edges)
+        
     title = payload.title if payload else session.title if session else None
     prompt = payload.prompt if payload else turns[-1].prompt if turns else None
+    
     drafts = await _generate_recall_drafts(
         session_id=session_id,
         title=title,
@@ -57,8 +70,10 @@ async def build_from_session(
         turns=turns,
         fallback_payload=fallback_payload,
     )
-    session_store.ensure_session(session_id, title=title)
+    
+    session_store.ensure_session(user_id, session_id, title=title)
     cards, replaced_count = recall_store.replace_for_session(
+        user_id,
         session_id,
         drafts,
     )
@@ -66,16 +81,23 @@ async def build_from_session(
 
 
 @router.post("/cards/{card_id}/review")
-async def review_card(card_id: str, payload: ActiveRecallReviewRequest) -> ActiveRecallCard:
-    card = recall_store.review(card_id, payload.rating)
+async def review_card(
+    card_id: str, 
+    payload: ActiveRecallReviewRequest,
+    user_id: str = Depends(get_current_user_id)
+) -> ActiveRecallCard:
+    card = recall_store.review(user_id, card_id, payload.rating)
     if card is None:
-        raise HTTPException(status_code=404, detail="card not found")
+        raise HTTPException(status_code=404, detail="Card not found or access denied")
     return card
 
 
 @router.delete("/sessions/{session_id}")
-async def delete_session_cards(session_id: str) -> dict[str, int]:
-    return {"deleted": recall_store.delete_session(session_id)}
+async def delete_session_cards(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id)
+) -> dict[str, int]:
+    return {"deleted": recall_store.delete_session(user_id, session_id)}
 
 
 async def _generate_recall_drafts(
