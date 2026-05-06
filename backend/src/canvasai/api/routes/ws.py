@@ -72,17 +72,26 @@ async def session_socket(ws: WebSocket, session_id: str, token: str | None = Que
 
             final_state: dict = {}
             seen = 0
+# Inside your try/except block for astream:
             try:
                 async for chunk in _graph.astream(initial):
+                    # Check if the user is still there before processing
+                    if ws.client_state.value != 1: # 1 is CONNECTED
+                        break
+                        
                     for _node_name, delta in chunk.items():
                         final_state.update(delta)
                         trace = final_state.get("trace") or []
                         for entry in trace[seen:]:
-                            await ws.send_json({"type": "status", **entry})
+                            # ONLY send status if the socket is open
+                            if ws.client_state.value == 1:
+                                await ws.send_json({"type": "status", **entry})
                         seen = len(trace)
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("ws pipeline failed for session %s", session_id)
-                await ws.send_json({"type": "error", "message": f"pipeline failed: {exc}"})
+            except Exception as exc:
+                logger.error(f"Pipeline Error: {exc}")
+                # ONLY send error message if the socket is open
+                if ws.client_state.value == 1:
+                    await ws.send_json({"type": "error", "message": "Model busy or quota reached."})
                 continue
 
             payload = final_state.get("output_payload") or {"nodes": [], "edges": []}

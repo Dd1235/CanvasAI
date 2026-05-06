@@ -33,7 +33,7 @@ class SchemaEnforcer(AgentBase):
             model_schema=CanvasPayload,
             system=self.system_prompt,
             user=user_input,
-            model="gpt-4o" 
+            model="gemini-2.5-flash" 
         )
 
         # Convert the Pydantic model back to a dict for the LangGraph state

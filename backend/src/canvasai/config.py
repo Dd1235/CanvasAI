@@ -17,7 +17,9 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str | None = None  # <-- Added for JWT verification
 
     # LLM provider injection
-    llm_provider: str = "openai"
+    llm_provider: str = "gemini"
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash-lite"
     openai_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("OPENAI_API_KEY", "OPEN_AI_API"),

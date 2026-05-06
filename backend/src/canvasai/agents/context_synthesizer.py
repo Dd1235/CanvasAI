@@ -32,7 +32,7 @@ class ContextSynthesizer(AgentBase):
         directive = await self.llm.complete(
             system=self.system_prompt, 
             user=user_input,
-            model="gpt-4o-mini" 
+            model="gemini-2.5-flash-lite" 
         )
 
         return {

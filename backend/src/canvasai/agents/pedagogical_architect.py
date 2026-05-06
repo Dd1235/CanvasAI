@@ -31,7 +31,7 @@ class PedagogicalArchitect(AgentBase):
         visual_script = await self.llm.complete(
             system=self.system_prompt,
             user=user_input,
-            model="gpt-4o-mini" # Still using the cheap model for reasoning
+            model="gemini-2.5-flash-lite" # Still using the cheap model for reasoning
         )
 
         return {
