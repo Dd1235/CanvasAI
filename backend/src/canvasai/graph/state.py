@@ -6,6 +6,7 @@ from typing import Any, TypedDict
 class GraphState(TypedDict, total=False):
     # Inputs
     prompt: str
+    chat_history: list[dict[str, Any]]  # NEW: For conversation context
     nodes: list[dict[str, Any]]
     edges: list[dict[str, Any]]
 

@@ -10,28 +10,22 @@ provider directly.
 """
 
 from __future__ import annotations
-
-from typing import Protocol
-
+from typing import Protocol, Any
 from canvasai.config import get_settings
-
 
 class LLMProvider(Protocol):
     name: str
-
-    async def complete(self, *, system: str, user: str) -> str:
-        """Single-shot completion. Returns model output as a string."""
-
+    
+    async def complete(self, *, system: str, user: str, model: str | None = None) -> str:
+        """Single-shot completion with optional model override."""
 
 def get_provider() -> LLMProvider:
     from canvasai.llm.openai_provider import OpenAIProvider
-
     _REGISTRY: dict[str, type[LLMProvider]] = {
         "openai": OpenAIProvider,
     }
-
     name = get_settings().llm_provider
     impl = _REGISTRY.get(name)
     if impl is None:
-        raise ValueError(f"Unknown LLM provider: {name!r}. Registered: {list(_REGISTRY)}")
+        raise ValueError(f"Unknown LLM provider: {name!r}")
     return impl()
