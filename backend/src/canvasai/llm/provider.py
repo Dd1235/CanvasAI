@@ -13,11 +13,21 @@ from __future__ import annotations
 from typing import Protocol, Any
 from canvasai.config import get_settings
 
+from typing import Protocol, Type, TypeVar
+from pydantic import BaseModel
+
+T = TypeVar("T", bound=BaseModel)
+
 class LLMProvider(Protocol):
     name: str
     
     async def complete(self, *, system: str, user: str, model: str | None = None) -> str:
-        """Single-shot completion with optional model override."""
+        """Standard string completion."""
+
+    async def structured_complete(
+        self, *, model_schema: Type[T], system: str, user: str, model: str | None = None
+    ) -> T:
+        """Completion that returns a validated Pydantic model."""
 
 def get_provider() -> LLMProvider:
     from canvasai.llm.openai_provider import OpenAIProvider

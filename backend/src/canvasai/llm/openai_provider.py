@@ -42,3 +42,22 @@ class OpenAIProvider:
         except Exception as e:
             logger.error(f"LangChain OpenAI Error: {str(e)}")
             return f"[Error: {type(e).__name__}] {str(system[:20])}"
+        
+    async def structured_complete(
+        self, *, model_schema: Type[T], system: str, user: str, model: str | None = None
+    ) -> T:
+        api_key = self._settings.openai_api_key
+        target_model = model or self._settings.openai_model
+        
+        llm = ChatOpenAI(
+            api_key=api_key,
+            model=target_model,
+            temperature=0, # Crucial for schema adherence
+        ).with_structured_output(model_schema)
+
+        messages = [
+            SystemMessage(content=system),
+            HumanMessage(content=user),
+        ]
+        
+        return await llm.ainvoke(messages)
