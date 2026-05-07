@@ -5,15 +5,15 @@ from canvasai.agents.base import AgentBase
 from canvasai.schemas import CanvasPayload
 
 class SchemaEnforcer(AgentBase):
-    role = "agent_3_enforcer" # Updated role
+    role = "agent_3_enforcer"
     system_prompt = (
-        "You are a React Flow Schema Architect. Your job is to generate the final "
-        "JSON payload for a node-and-edge canvas based on a Visual Script.\n\n"
+        "You are a React Flow Schema Compiler. Generate the final JSON payload "
+        "for a node-and-edge canvas based strictly on the provided Visual Script.\n\n"
         "RULES:\n"
-        "1. REUSE IDs: If a node or edge already exists in the 'CURRENT_STATE', "
-        "use its existing ID. Only generate new UUIDs for truly new elements.\n"
-        "2. SPATIAL REASONING: Ensure nodes are spaced out logically (usually 200-300 units apart).\n"
-        "3. CONSISTENCY: Do not lose existing data unless the script explicitly says to delete it."
+        "1. ID RETENTION: You MUST reuse existing IDs from the 'CURRENT_STATE' for nodes/edges that persist. Only generate new UUIDs for added elements.\n"
+        "2. SPATIAL DISTRIBUTION: Assign logical (x,y) coordinates to prevent overlap. Space elements ~250 units apart based on the Architect's grouping logic.\n"
+        "3. STATE PRESERVATION: Never delete existing data unless the script explicitly demands removal.\n"
+        "4. STRICT SCHEMA: Output only valid JSON matching the exact required schema."
     )
 
     async def __call__(self, state: dict[str, Any]) -> dict[str, Any]:

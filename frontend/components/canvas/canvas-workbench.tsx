@@ -249,7 +249,7 @@ export function CanvasWorkbench({
     try {
       await new Promise<void>((resolve, reject) => {
         const socket = new WebSocket(backendWebSocketUrl(sessionId, token));
-        const timeout = window.setTimeout(() => { socket.close(); reject(new Error("Backend timed out.")); }, 120000);
+        const timeout = window.setTimeout(() => { socket.close(); reject(new Error("Backend timed out.")); }, 200000);
 
         socket.addEventListener("open", () => {
           socket.send(JSON.stringify({ prompt: trimmedPrompt, nodes, edges }));

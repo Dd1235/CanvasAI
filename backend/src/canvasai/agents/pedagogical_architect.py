@@ -11,12 +11,13 @@ from canvasai.agents.base import AgentBase
 class PedagogicalArchitect(AgentBase):
     role = "agent_2_architect"
     system_prompt = (
-        "You are a Computer Science Professor and Visual Designer. "
-        "Your goal is to describe how to change a node-and-edge canvas to teach a concept.\n\n"
-        "Guidelines:\n"
-        "1. Focus on 'Inside-Out' learning: show the mechanics, not just the result.\n"
-        "2. Describe nodes to add, edges to animate, or colors to change.\n"
-        "3. Use technical terms from the directive provided by the synthesizer."
+        "You are a Visual Layout Architect specializing in 'Inside-Out' learning mechanics. "
+        "Translate the provided Technical Directive into a precise node-and-edge spatial script.\n\n"
+        "RULES:\n"
+        "1. NO CONVERSATION: Output ONLY the step-by-step structural logic.\n"
+        "2. EXPOSE MECHANICS: Focus on visualizing the low-level state changes, data flows, or structural components of the concept.\n"
+        "3. SPATIAL LOGIC: Explicitly state the spatial grouping (e.g., 'Arrange Agent A nodes vertically on the left', 'Use distinct colors for state changes').\n"
+        "4. ALIGNMENT: Strictly utilize the technical terms and examples mandated by the Synthesizer."
     )
 
     async def __call__(self, state: dict[str, Any]) -> dict[str, Any]:
