@@ -42,26 +42,29 @@ async def session_socket(ws: WebSocket, session_id: str, token: str | None = Que
     
     try:
         while True:
-            raw = await ws.receive_text()
+            # 1. Safely attempt to receive text
+            try:
+                raw = await ws.receive_text()
+            except (WebSocketDisconnect, RuntimeError):
+                logger.info(f"Client disconnected from session {session_id}")
+                break # Safely exit the loop if socket is dead
+
+            # 2. Parse the JSON
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 await ws.send_json({"type": "error", "message": "invalid json"})
                 continue
 
-            # --- NEW: Fetch Chat History from the Database ---
+            # --- Fetch Chat History from the Database ---
             try:
                 past_turns = session_store.history(user_id, session_id)
-                # Format the history for the Synthesizer (limiting to last 5 for context window optimization)
-                chat_history = [
-                    {"role": "user", "content": turn.prompt} 
-                    for turn in past_turns[-5:]
-                ]
+                chat_history = [{"role": "user", "content": turn.prompt} for turn in past_turns[-5:]]
             except Exception as e:
                 logger.error(f"Failed to fetch history for session {session_id}: {e}")
                 chat_history = []
 
-            # --- UPDATED: Inject chat_history into the LangGraph state ---
+            # --- Inject chat_history into the LangGraph state ---
             initial = {
                 "prompt": str(msg.get("prompt", "")),
                 "chat_history": chat_history,
@@ -72,10 +75,9 @@ async def session_socket(ws: WebSocket, session_id: str, token: str | None = Que
 
             final_state: dict = {}
             seen = 0
-# Inside your try/except block for astream:
+            
             try:
                 async for chunk in _graph.astream(initial):
-                    # Check if the user is still there before processing
                     if ws.client_state.value != 1: # 1 is CONNECTED
                         break
                         
@@ -83,25 +85,36 @@ async def session_socket(ws: WebSocket, session_id: str, token: str | None = Que
                         final_state.update(delta)
                         trace = final_state.get("trace") or []
                         for entry in trace[seen:]:
-                            # ONLY send status if the socket is open
                             if ws.client_state.value == 1:
                                 await ws.send_json({"type": "status", **entry})
                         seen = len(trace)
             except Exception as exc:
-                logger.error(f"Pipeline Error: {exc}")
-                # ONLY send error message if the socket is open
-                if ws.client_state.value == 1:
-                    await ws.send_json({"type": "error", "message": "Model busy or quota reached."})
+                # 1. Catch the specific timeout/disconnect exceptions
+                if type(exc).__name__ in ("GeneratorExit", "CancelledError"):
+                    logger.info(f"Session {session_id} generation cancelled (Client disconnected or timed out)")
+                    break
+                
+                # 2. Log actual errors with more detail
+                logger.error(f"Pipeline Error: {type(exc).__name__} - {str(exc)}")
+                try:
+                    if ws.client_state.value == 1:
+                        await ws.send_json({"type": "error", "message": "Model busy or generation failed."})
+                except RuntimeError:
+                    pass
                 continue
 
+            # --- Save to Database & Send Payload ---
             payload = final_state.get("output_payload") or {"nodes": [], "edges": []}
             try:
-                # Store the turn using the authenticated user_id
                 session_store.append_turn(user_id, session_id, initial["prompt"], payload)
-            except Exception:  # noqa: BLE001
+            except Exception: 
                 logger.exception("session_store.append_turn failed for %s", session_id)
                 
-            await ws.send_json({"type": "payload", **payload})
+            try:
+                if ws.client_state.value == 1:
+                    await ws.send_json({"type": "payload", **payload})
+            except RuntimeError:
+                break # Connection died while sending payload
             
     except WebSocketDisconnect:
-        return
+        pass # Normal disconnect route
