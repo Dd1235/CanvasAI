@@ -22,7 +22,7 @@ class CanvasEdge(BaseModel):
     id: str
     source: str
     target: str
-    type: str | None = None
+    type: Literal["default", "straight", "step", "smoothstep"] = "smoothstep"
     animated: bool | None = None
     label: str | None = None
     data: dict[str, Any] = Field(default_factory=dict)
@@ -31,7 +31,7 @@ class CanvasEdge(BaseModel):
 class CanvasPayload(BaseModel):
     nodes: list[CanvasNode] = Field(default_factory=list)
     edges: list[CanvasEdge] = Field(default_factory=list)
-
+    ai_response: str = Field(default="Canvas updated.")
 
 class TraceEntry(BaseModel):
     agent: str

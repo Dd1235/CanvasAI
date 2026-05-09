@@ -266,7 +266,14 @@ export function CanvasWorkbench({
             window.clearTimeout(timeout);
             setNodes(frame.nodes);
             setEdges(frame.edges);
-            appendFrame({ prompt: trimmedPrompt, summary: "Rendered from backend LangGraph payload.", nodes: frame.nodes.length, edges: frame.edges.length, payload: { nodes: frame.nodes, edges: frame.edges } });
+            appendFrame({ 
+              prompt: trimmedPrompt, 
+              // Use the AI's conversational response!
+              summary: (frame as any).ai_response || "Canvas updated.", 
+              nodes: frame.nodes.length, 
+              edges: frame.edges.length, 
+              payload: { nodes: frame.nodes, edges: frame.edges } 
+            });
             toast.success("Canvas updated");
             socket.close();
             resolve();
@@ -489,7 +496,7 @@ export function CanvasWorkbench({
                 </div>
               </PanelBlock>
 
-                            <PanelBlock title="Agent Trace" icon={Zap}>
+              <PanelBlock title="Agent Trace" icon={Zap}>
                 <div className="space-y-3">
                   {trace.map((entry, index) => {
                     const Icon = AGENT_ICONS[index] ?? CheckCircle2;

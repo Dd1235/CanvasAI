@@ -59,7 +59,14 @@ async def session_socket(ws: WebSocket, session_id: str, token: str | None = Que
             # --- Fetch Chat History from the Database ---
             try:
                 past_turns = session_store.history(user_id, session_id)
-                chat_history = [{"role": "user", "content": turn.prompt} for turn in past_turns[-5:]]
+                chat_history = []
+                for turn in past_turns[-5:]: # Last 5 turns for context
+                    # 1. User's prompt
+                    chat_history.append({"role": "user", "content": turn.prompt})
+                    # 2. AI's response (cure the amnesia)
+                    payload_dict = turn.payload if isinstance(turn.payload, dict) else turn.payload.model_dump()
+                    ai_text = payload_dict.get("ai_response", "I updated the canvas.")
+                    chat_history.append({"role": "assistant", "content": ai_text})
             except Exception as e:
                 logger.error(f"Failed to fetch history for session {session_id}: {e}")
                 chat_history = []
