@@ -55,6 +55,7 @@ import {
   branchSessionFromTurn,
 } from "@/lib/canvasai-api";
 import { createClient } from "@/lib/supabase/client";
+import { ResourceModal } from "./ResourceModal";
 import type {
   AgentTrace,
   CanvasEdge,
@@ -382,7 +383,8 @@ export function CanvasWorkbench({
           
           <div className="mt-4 flex flex-wrap gap-2">
             <Button type="button" size="sm" variant="outline" onClick={() => goToFrame(deckFrames.length - 1)}><RotateCcw className="size-4 mr-1.5" /> Latest</Button>
-                        <Button type="button" size="sm" variant="outline" onClick={restoreInitial}><RotateCcw className="size-4 mr-1.5" /> Restore</Button>
+            <Button type="button" size="sm" variant="outline" onClick={restoreInitial}><RotateCcw className="size-4 mr-1.5" /> Restore</Button>
+            <ResourceModal sessionId={sessionId} />
             <Button type="button" size="sm" variant="outline" onClick={addToRecall} disabled={recalling}>
               {recalling ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <BookOpenCheck className="size-4 mr-1.5" />} Recall
             </Button>
