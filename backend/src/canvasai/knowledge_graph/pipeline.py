@@ -9,11 +9,17 @@ from canvasai.knowledge_graph.merge import (
     KGEdgeCandidate,
     KGNodeCandidate,
     KGNodeRecord,
+    lexical_similarity,
     merge_graph_candidates,
     normalize_topic_key,
 )
 from canvasai.llm.provider import get_provider
-from canvasai.schemas import KnowledgeGraphRelation
+from canvasai.schemas import (
+    KnowledgeGraphProposal,
+    KnowledgeGraphProposalEdge,
+    KnowledgeGraphProposalNode,
+    KnowledgeGraphRelation,
+)
 from canvasai.storage import knowledge_graph as kg_store
 
 logger = logging.getLogger(__name__)
@@ -26,14 +32,29 @@ async def run_build_job(build_id: str) -> dict[str, Any]:
     user_id = job["user_id"]
     session_id = str(job["session_id"]) if job.get("session_id") else None
     request_payload = job.get("request_payload") or {}
+    source_type = str(job.get("source_type") or "session_export")
 
     kg_store.mark_build_job(build_id, "running")
     try:
-        graph, graph_version_id = await build_graph_from_session_export(
-            user_id=user_id,
-            session_id=session_id,
-            request_payload=request_payload,
-        )
+        if source_type == "user_proposal":
+            graph, graph_version_id = await merge_proposal(
+                user_id=user_id,
+                source_id=str(request_payload.get("source_id") or f"proposal:{build_id}"),
+                proposed_nodes=[
+                    KnowledgeGraphProposalNode.model_validate(node)
+                    for node in request_payload.get("proposed_nodes") or []
+                ],
+                proposed_edges=[
+                    KnowledgeGraphProposalEdge.model_validate(edge)
+                    for edge in request_payload.get("proposed_edges") or []
+                ],
+            )
+        else:
+            graph, graph_version_id = await build_graph_from_session_export(
+                user_id=user_id,
+                session_id=session_id,
+                request_payload=request_payload,
+            )
     except Exception as exc:  # noqa: BLE001
         logger.exception("knowledge graph build failed for job %s", build_id)
         kg_store.mark_build_job(build_id, "failed", error=str(exc))
@@ -47,6 +68,166 @@ async def run_build_job(build_id: str) -> dict[str, Any]:
         "nodes": len(graph.nodes),
         "edges": len(graph.edges),
     }
+
+
+async def propose_from_text(
+    *,
+    user_id: str,
+    title: str | None,
+    text: str,
+) -> KnowledgeGraphProposal:
+    """Run the LLM extraction step only and return a user-reviewable proposal.
+
+    Does NOT persist anything. The caller is expected to send the proposal
+    (potentially edited) back to ``merge_proposal`` to actually mutate the
+    persisted graph.
+    """
+    request_payload = {
+        "title": title,
+        "prompt": title or "Manual knowledge graph facts",
+        "nodes": [],
+        "edges": [],
+        "facts": text,
+    }
+    artifacts = kg_store.collect_build_artifacts(user_id, None, request_payload)
+    existing_nodes, _existing_edges = kg_store.get_latest_records(user_id)
+    source_id = f"manual:{title or 'facts'}"
+
+    candidate_nodes, candidate_edges = await extract_candidates(
+        artifacts,
+        source_id=source_id,
+        existing_nodes=existing_nodes,
+    )
+    await _attach_embeddings(candidate_nodes=candidate_nodes, existing_nodes=existing_nodes)
+
+    proposal_nodes = [
+        _candidate_to_proposal_node(candidate, existing_nodes)
+        for candidate in candidate_nodes
+    ]
+    proposal_edges = [
+        KnowledgeGraphProposalEdge(
+            source_title=edge.source_title,
+            target_title=edge.target_title,
+            relation=edge.relation,
+            strength=edge.strength,
+            confidence=edge.confidence,
+            evidence=edge.evidence,
+        )
+        for edge in candidate_edges
+    ]
+
+    return KnowledgeGraphProposal(
+        source_id=source_id,
+        title=title,
+        text=text,
+        proposed_nodes=proposal_nodes,
+        proposed_edges=proposal_edges,
+        existing_node_titles=[node.title for node in existing_nodes[:60]],
+    )
+
+
+async def merge_proposal(
+    *,
+    user_id: str,
+    source_id: str,
+    proposed_nodes: list[KnowledgeGraphProposalNode],
+    proposed_edges: list[KnowledgeGraphProposalEdge],
+):
+    """Apply a (user-reviewed) proposal to the persisted graph."""
+    artifacts = kg_store.collect_build_artifacts(user_id, None, {"nodes": [], "edges": []})
+    existing_nodes, existing_edges = kg_store.get_latest_records(user_id)
+
+    candidate_nodes = [_proposal_to_candidate_node(node, source_id) for node in proposed_nodes]
+    candidate_edges = [_proposal_to_candidate_edge(edge, source_id) for edge in proposed_edges]
+    await _attach_embeddings(candidate_nodes=candidate_nodes, existing_nodes=existing_nodes)
+
+    merged = await merge_graph_candidates(
+        existing_nodes=existing_nodes,
+        existing_edges=existing_edges,
+        candidate_nodes=candidate_nodes,
+        candidate_edges=candidate_edges,
+        same_concept_gate=_same_concept_gate,
+    )
+    return kg_store.append_graph_version(
+        user_id=user_id,
+        source_summary=artifacts["source_summary"],
+        nodes=merged.nodes,
+        edges=merged.edges,
+    )
+
+
+def _candidate_to_proposal_node(
+    candidate: KGNodeCandidate,
+    existing_nodes: list[KGNodeRecord],
+) -> KnowledgeGraphProposalNode:
+    matched_id, matched_title = _best_existing_match(candidate, existing_nodes)
+    return KnowledgeGraphProposalNode(
+        title=candidate.title,
+        summary=candidate.summary,
+        revision_prompt=candidate.revision_prompt,
+        aliases=list(candidate.aliases),
+        tags=list(candidate.tags),
+        cluster=candidate.cluster,
+        confidence=candidate.confidence,
+        evidence=list(candidate.evidence),
+        matched_existing_id=matched_id,
+        matched_existing_title=matched_title,
+        is_new=matched_id is None,
+    )
+
+
+def _best_existing_match(
+    candidate: KGNodeCandidate,
+    existing_nodes: list[KGNodeRecord],
+) -> tuple[str | None, str | None]:
+    if not existing_nodes:
+        return None, None
+    candidate_title_key = normalize_topic_key(candidate.title)
+    for node in existing_nodes:
+        for alias in [node.title, *node.aliases]:
+            if normalize_topic_key(alias) == candidate_title_key:
+                return node.id, node.title
+    best: tuple[float, KGNodeRecord] | None = None
+    for node in existing_nodes:
+        for alias in [node.title, *node.aliases]:
+            score = lexical_similarity(candidate.title, alias)
+            if best is None or score > best[0]:
+                best = (score, node)
+    if best and best[0] >= 0.86:
+        return best[1].id, best[1].title
+    return None, None
+
+
+def _proposal_to_candidate_node(
+    node: KnowledgeGraphProposalNode,
+    source_id: str,
+) -> KGNodeCandidate:
+    return KGNodeCandidate(
+        title=node.title.strip(),
+        summary=node.summary.strip(),
+        revision_prompt=node.revision_prompt.strip(),
+        aliases=list(node.aliases),
+        tags=list(node.tags),
+        cluster=node.cluster or "general",
+        confidence=node.confidence,
+        evidence=list(node.evidence) or ["user-confirmed"],
+        source_session_ids=[source_id],
+    )
+
+
+def _proposal_to_candidate_edge(
+    edge: KnowledgeGraphProposalEdge,
+    source_id: str,
+) -> KGEdgeCandidate:
+    return KGEdgeCandidate(
+        source_title=edge.source_title.strip(),
+        target_title=edge.target_title.strip(),
+        relation=edge.relation,
+        strength=edge.strength,
+        confidence=edge.confidence,
+        evidence=edge.evidence.strip() or f"{edge.source_title} {edge.relation} {edge.target_title}.",
+        source_session_ids=[source_id],
+    )
 
 
 async def build_graph_from_session_export(

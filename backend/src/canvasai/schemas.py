@@ -236,3 +236,48 @@ class KnowledgeGraphExportResponse(BaseModel):
     build_id: str
     queued: bool
     message: str
+
+
+class KnowledgeGraphProposalNode(BaseModel):
+    title: str
+    summary: str = ""
+    revision_prompt: str = ""
+    aliases: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    cluster: str = "general"
+    confidence: float = Field(default=0.65, ge=0, le=1)
+    evidence: list[str] = Field(default_factory=list)
+    matched_existing_id: str | None = None
+    matched_existing_title: str | None = None
+    is_new: bool = True
+
+
+class KnowledgeGraphProposalEdge(BaseModel):
+    source_title: str
+    target_title: str
+    relation: KnowledgeGraphRelation = "extends"
+    strength: float = Field(default=0.55, ge=0, le=1)
+    confidence: float = Field(default=0.65, ge=0, le=1)
+    evidence: str = ""
+
+
+class KnowledgeGraphProposal(BaseModel):
+    source_id: str
+    title: str | None = None
+    text: str | None = None
+    proposed_nodes: list[KnowledgeGraphProposalNode]
+    proposed_edges: list[KnowledgeGraphProposalEdge]
+    existing_node_titles: list[str] = Field(default_factory=list)
+
+
+class KnowledgeGraphProposeRequest(BaseModel):
+    title: str | None = None
+    text: str = Field(min_length=1)
+
+
+class KnowledgeGraphMergeRequest(BaseModel):
+    source_id: str
+    title: str | None = None
+    text: str | None = None
+    proposed_nodes: list[KnowledgeGraphProposalNode]
+    proposed_edges: list[KnowledgeGraphProposalEdge]
