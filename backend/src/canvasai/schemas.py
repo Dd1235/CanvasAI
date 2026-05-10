@@ -231,6 +231,16 @@ class KnowledgeGraphManualFactsRequest(BaseModel):
     text: str = Field(min_length=1)
 
 
+class KnowledgeGraphCanvasFact(BaseModel):
+    title: str = Field(min_length=1)
+    description: str = ""
+
+
+class KnowledgeGraphCanvasFactsRequest(BaseModel):
+    session_id: str | None = None
+    facts: list[KnowledgeGraphCanvasFact] = Field(min_length=1)
+
+
 class KnowledgeGraphExportResponse(BaseModel):
     graph_id: str
     build_id: str

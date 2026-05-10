@@ -7,6 +7,7 @@ from canvasai.api.deps import get_current_user_id
 from canvasai.inngest_app.functions import KNOWLEDGE_GRAPH_REBUILD_EVENT, inngest_client
 from canvasai.knowledge_graph.pipeline import propose_from_text
 from canvasai.schemas import (
+    KnowledgeGraphCanvasFactsRequest,
     KnowledgeGraphExportRequest,
     KnowledgeGraphExportResponse,
     KnowledgeGraphManualFactsRequest,
@@ -115,6 +116,59 @@ async def merge_reviewed_proposal(
         build_id=build_id,
         queued=True,
         message="Reviewed proposal queued for merge.",
+    )
+
+
+@router.post("/from-facts", response_model=KnowledgeGraphExportResponse)
+async def export_from_facts(
+    payload: KnowledgeGraphCanvasFactsRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> KnowledgeGraphExportResponse:
+    """Async-merge a bundle of canvas-derived facts.
+
+    Intended for the live canvas → KG pipeline (layer 1 hands off bundled
+    `{title, description}` facts here). Runs the same extraction + merge
+    pipeline as `/from-text`; no review step. Each fact becomes a candidate
+    node with title + summary; the LLM extraction sees the bundle and
+    proposes additional nodes/edges as needed.
+    """
+    facts_payload = [
+        {"title": fact.title, "summary": fact.description, "description": fact.description}
+        for fact in payload.facts
+    ]
+    request_payload = {
+        "title": None,
+        "prompt": "Canvas-derived facts bundle",
+        "nodes": [],
+        "edges": [],
+        "facts": facts_payload,
+    }
+    build_id = kg_store.create_build_job(
+        user_id,
+        payload.session_id,
+        request_payload,
+        source_type="session_export" if payload.session_id else "manual_facts",
+    )
+
+    try:
+        await inngest_client.send(
+            inngest.Event(
+                name=KNOWLEDGE_GRAPH_REBUILD_EVENT,
+                data={"build_id": build_id},
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        kg_store.mark_build_job(build_id, "failed", error=f"Could not enqueue Inngest event: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Knowledge graph facts job was created, but Inngest enqueue failed.",
+        ) from exc
+
+    return KnowledgeGraphExportResponse(
+        graph_id=kg_store.graph_id_for_user(user_id),
+        build_id=build_id,
+        queued=True,
+        message=f"Queued {len(payload.facts)} canvas facts for graph merge.",
     )
 
 
