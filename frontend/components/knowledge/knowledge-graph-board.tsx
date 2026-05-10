@@ -73,15 +73,75 @@ type SprintItem = {
   why: string;
 };
 
-const CLUSTER_STYLES: Record<string, string> = {
-  "data-structures": "border-emerald-400 bg-emerald-50 text-emerald-950",
-  "memory-model": "border-sky-400 bg-sky-50 text-sky-950",
-  algorithms: "border-amber-400 bg-amber-50 text-amber-950",
-  systems: "border-rose-400 bg-rose-50 text-rose-950",
-  frontend: "border-violet-400 bg-violet-50 text-violet-950",
-  kafka: "border-cyan-400 bg-cyan-50 text-cyan-950",
+type ClusterPalette = {
+  border: string;
+  background: string;
+  text: string;
+  accent: string;
 };
-const FALLBACK_CLUSTER_STYLE = "border-slate-400 bg-slate-50 text-slate-950";
+
+// Hash any cluster name to a stable HSL palette so unfamiliar clusters
+// (anything coming from the LLM extraction) still get a distinct color.
+// Group nodes by cluster and lay each cluster out on its own ring around a
+// shared origin. Backend positions still arrive (Vogel spiral around 0,0) but
+// they all collide visually; this gives clusters separation and makes edges
+// readable even with 30+ nodes.
+function layoutNodes(
+  nodes: KnowledgeGraphNode[],
+): Map<string, { x: number; y: number }> {
+  const byCluster = new Map<string, KnowledgeGraphNode[]>();
+  for (const node of nodes) {
+    const list = byCluster.get(node.cluster) ?? [];
+    list.push(node);
+    byCluster.set(node.cluster, list);
+  }
+  // Sort clusters by size so the biggest sits at a stable angle (no jitter
+  // when nodes are added later).
+  const clusters = [...byCluster.entries()].sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+
+  const positions = new Map<string, { x: number; y: number }>();
+  const clusterCount = Math.max(clusters.length, 1);
+  const orbitRadius = 360 + clusters.length * 60;
+
+  clusters.forEach(([, clusterNodes], clusterIndex) => {
+    const clusterAngle =
+      (clusterIndex / clusterCount) * Math.PI * 2 - Math.PI / 2;
+    const cx = Math.cos(clusterAngle) * orbitRadius;
+    const cy = Math.sin(clusterAngle) * orbitRadius;
+
+    if (clusterNodes.length === 1) {
+      positions.set(clusterNodes[0].id, { x: cx, y: cy });
+      return;
+    }
+    const innerRadius = 90 + clusterNodes.length * 22;
+    clusterNodes.forEach((node, nodeIndex) => {
+      const innerAngle = (nodeIndex / clusterNodes.length) * Math.PI * 2;
+      positions.set(node.id, {
+        x: cx + Math.cos(innerAngle) * innerRadius,
+        y: cy + Math.sin(innerAngle) * innerRadius,
+      });
+    });
+  });
+
+  return positions;
+}
+
+function paletteForCluster(cluster: string): ClusterPalette {
+  const key = (cluster || "general").toLowerCase();
+  let hash = 7;
+  for (let i = 0; i < key.length; i += 1) {
+    hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return {
+    border: `hsl(${hue} 70% 45%)`,
+    background: `hsl(${hue} 85% 96%)`,
+    text: `hsl(${hue} 55% 18%)`,
+    accent: `hsl(${hue} 65% 35%)`,
+  };
+}
 
 const EDGE_COLORS: Record<KnowledgeGraphEdge["relation"], string> = {
   prerequisite: "#0f766e",
@@ -290,12 +350,14 @@ export function KnowledgeGraphBoard() {
     });
   };
 
+  const positions = React.useMemo(() => layoutNodes(graph.nodes), [graph.nodes]);
+
   const flowNodes = React.useMemo<Node[]>(
     () =>
       graph.nodes.map((topic) => ({
         id: topic.id,
         type: "default",
-        position: topic.position,
+        position: positions.get(topic.id) ?? topic.position,
         data: {
           label: <TopicNode topic={topic} selected={topic.id === selected?.id} />,
         },
@@ -308,7 +370,7 @@ export function KnowledgeGraphBoard() {
           boxShadow: "none",
         },
       })),
-    [graph.nodes, selected?.id],
+    [graph.nodes, positions, selected?.id],
   );
 
   const flowEdges = React.useMemo<Edge[]>(
@@ -792,25 +854,36 @@ function reviewHref(topic: KnowledgeGraphNode) {
 }
 
 function TopicNode({ topic, selected }: { topic: KnowledgeGraphNode; selected: boolean }) {
+  const palette = paletteForCluster(topic.cluster);
   return (
     <div
       className={cn(
         "rounded-lg border-2 p-3 shadow-sm",
-        CLUSTER_STYLES[topic.cluster] ?? FALLBACK_CLUSTER_STYLE,
         selected && "ring-ring ring-2 ring-offset-2",
       )}
+      style={{
+        borderColor: palette.border,
+        background: palette.background,
+        color: palette.text,
+      }}
     >
       <div className="flex items-start justify-between gap-2">
         <p className="line-clamp-2 text-sm font-semibold">{topic.title}</p>
-        <span className="shrink-0 rounded bg-white/70 px-1.5 py-0.5 text-[10px] font-medium">
+        <span
+          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium"
+          style={{ background: "rgba(255,255,255,0.7)", color: palette.accent }}
+        >
           {Math.round(topic.mastery * 100)}%
         </span>
       </div>
       <p className="mt-2 line-clamp-2 text-xs opacity-80">{topic.summary}</p>
-      <div className="mt-3 h-1.5 rounded-full bg-white/60">
+      <div className="mt-3 h-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.6)" }}>
         <div
-          className="h-full rounded-full bg-current"
-          style={{ width: `${Math.max(8, Math.round(topic.mastery * 100))}%` }}
+          className="h-full rounded-full"
+          style={{
+            width: `${Math.max(8, Math.round(topic.mastery * 100))}%`,
+            background: palette.accent,
+          }}
         />
       </div>
     </div>
