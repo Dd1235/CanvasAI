@@ -5,11 +5,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from canvasai.api.deps import get_current_user_id
 from canvasai.inngest_app.functions import KNOWLEDGE_GRAPH_REBUILD_EVENT, inngest_client
+from canvasai.knowledge_graph.pipeline import propose_from_text
 from canvasai.schemas import (
     KnowledgeGraphExportRequest,
     KnowledgeGraphExportResponse,
     KnowledgeGraphManualFactsRequest,
+    KnowledgeGraphMergeRequest,
     KnowledgeGraphPayload,
+    KnowledgeGraphProposal,
+    KnowledgeGraphProposeRequest,
 )
 from canvasai.storage import knowledge_graph as kg_store
 
@@ -49,6 +53,68 @@ async def export_from_session(
         build_id=build_id,
         queued=True,
         message="Knowledge graph update queued.",
+    )
+
+
+@router.post("/extract", response_model=KnowledgeGraphProposal)
+async def extract_proposal(
+    payload: KnowledgeGraphProposeRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> KnowledgeGraphProposal:
+    """Run extraction synchronously and return proposed nodes/edges for review.
+
+    Does not mutate the persisted graph. The frontend should display the
+    proposal, let the user edit/accept, then POST the (possibly edited)
+    payload back to ``/knowledge-graph/merge``.
+    """
+    return await propose_from_text(user_id=user_id, title=payload.title, text=payload.text)
+
+
+@router.post("/merge", response_model=KnowledgeGraphExportResponse)
+async def merge_reviewed_proposal(
+    payload: KnowledgeGraphMergeRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> KnowledgeGraphExportResponse:
+    """Enqueue an async merge of a user-reviewed proposal."""
+    if not payload.proposed_nodes and not payload.proposed_edges:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Proposal is empty: at least one node or edge is required.",
+        )
+
+    request_payload = {
+        "source_id": payload.source_id,
+        "title": payload.title,
+        "text": payload.text,
+        "proposed_nodes": [node.model_dump(mode="json") for node in payload.proposed_nodes],
+        "proposed_edges": [edge.model_dump(mode="json") for edge in payload.proposed_edges],
+    }
+    build_id = kg_store.create_build_job(
+        user_id,
+        None,
+        request_payload,
+        source_type="user_proposal",
+    )
+
+    try:
+        await inngest_client.send(
+            inngest.Event(
+                name=KNOWLEDGE_GRAPH_REBUILD_EVENT,
+                data={"build_id": build_id},
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        kg_store.mark_build_job(build_id, "failed", error=f"Could not enqueue Inngest event: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Knowledge graph merge job was created, but Inngest enqueue failed.",
+        ) from exc
+
+    return KnowledgeGraphExportResponse(
+        graph_id=kg_store.graph_id_for_user(user_id),
+        build_id=build_id,
+        queued=True,
+        message="Reviewed proposal queued for merge.",
     )
 
 
