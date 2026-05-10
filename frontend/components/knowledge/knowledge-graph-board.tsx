@@ -12,6 +12,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import {
+  ArrowLeft,
   Brain,
   BookOpenCheck,
   FilePlus2,
@@ -19,10 +20,13 @@ import {
   Network,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
   RefreshCcw,
   Route,
   Shuffle,
+  Sparkles,
   Target,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -41,14 +45,18 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  addTextToKnowledgeGraph,
   getKnowledgeGraph,
   KNOWLEDGE_GRAPH_ENDPOINT,
+  mergeKnowledgeGraphProposal,
+  proposeKnowledgeGraphFromText,
 } from "@/lib/canvasai-api";
 import type {
   KnowledgeGraphEdge,
   KnowledgeGraphNode,
   KnowledgeGraphPayload,
+  KnowledgeGraphProposal,
+  KnowledgeGraphProposalEdge,
+  KnowledgeGraphProposalNode,
 } from "@/lib/canvasai-types";
 import { MOCK_KNOWLEDGE_GRAPH } from "@/lib/mock-knowledge-graph";
 import { cn } from "@/lib/utils";
@@ -102,7 +110,10 @@ export function KnowledgeGraphBoard() {
   const [factsOpen, setFactsOpen] = React.useState(false);
   const [factsTitle, setFactsTitle] = React.useState("");
   const [factsText, setFactsText] = React.useState("");
-  const [submittingFacts, setSubmittingFacts] = React.useState(false);
+  const [factsStep, setFactsStep] = React.useState<"input" | "review">("input");
+  const [extracting, setExtracting] = React.useState(false);
+  const [merging, setMerging] = React.useState(false);
+  const [proposal, setProposal] = React.useState<KnowledgeGraphProposal | null>(null);
 
   const selected = graph.nodes.find((node) => node.id === selectedId) ?? graph.nodes[0];
   const relatedEdges = graph.edges.filter(
@@ -141,27 +152,142 @@ export function KnowledgeGraphBoard() {
     return () => window.clearInterval(id);
   }, [loadGraph]);
 
-  const submitFacts = async (event: React.FormEvent<HTMLFormElement>) => {
+  const resetFactsDialog = React.useCallback(() => {
+    setFactsStep("input");
+    setProposal(null);
+    setFactsTitle("");
+    setFactsText("");
+  }, []);
+
+  const extractFacts = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const text = factsText.trim();
     if (!text) return;
 
-    setSubmittingFacts(true);
+    setExtracting(true);
     try {
-      const result = await addTextToKnowledgeGraph({
+      const next = await proposeKnowledgeGraphFromText({
         title: factsTitle.trim() || undefined,
         text,
       });
-      toast.success(result.message || "Knowledge graph facts queued");
+      setProposal(next);
+      setFactsStep("review");
+      if (!next.proposed_nodes.length && !next.proposed_edges.length) {
+        toast.info("LLM returned no facts — try adding more detail.");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not extract facts.");
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const commitProposal = async () => {
+    if (!proposal) return;
+    if (!proposal.proposed_nodes.length && !proposal.proposed_edges.length) {
+      toast.info("Add at least one node or edge before committing.");
+      return;
+    }
+    setMerging(true);
+    try {
+      const result = await mergeKnowledgeGraphProposal({
+        source_id: proposal.source_id,
+        title: proposal.title,
+        text: proposal.text,
+        proposed_nodes: proposal.proposed_nodes,
+        proposed_edges: proposal.proposed_edges,
+      });
+      toast.success(result.message || "Reviewed proposal queued for merge.");
       setFactsOpen(false);
-      setFactsTitle("");
-      setFactsText("");
+      resetFactsDialog();
       window.setTimeout(() => void loadGraph({ silent: true }), 3000);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not queue knowledge graph facts.");
+      toast.error(error instanceof Error ? error.message : "Could not merge proposal.");
     } finally {
-      setSubmittingFacts(false);
+      setMerging(false);
     }
+  };
+
+  const updateProposalNode = (index: number, patch: Partial<KnowledgeGraphProposalNode>) => {
+    setProposal((current) => {
+      if (!current) return current;
+      const proposed_nodes = current.proposed_nodes.map((node, i) =>
+        i === index ? { ...node, ...patch } : node,
+      );
+      return { ...current, proposed_nodes };
+    });
+  };
+
+  const removeProposalNode = (index: number) => {
+    setProposal((current) => {
+      if (!current) return current;
+      const removed = current.proposed_nodes[index];
+      const proposed_nodes = current.proposed_nodes.filter((_, i) => i !== index);
+      // Drop edges that reference the removed node title; merge would either
+      // skip them or auto-create a placeholder otherwise.
+      const proposed_edges = removed
+        ? current.proposed_edges.filter(
+            (edge) =>
+              edge.source_title !== removed.title && edge.target_title !== removed.title,
+          )
+        : current.proposed_edges;
+      return { ...current, proposed_nodes, proposed_edges };
+    });
+  };
+
+  const addProposalNode = () => {
+    setProposal((current) => {
+      if (!current) return current;
+      const blank: KnowledgeGraphProposalNode = {
+        title: "",
+        summary: "",
+        revision_prompt: "",
+        aliases: [],
+        tags: [],
+        cluster: "general",
+        confidence: 0.65,
+        evidence: ["user-added"],
+        matched_existing_id: null,
+        matched_existing_title: null,
+        is_new: true,
+      };
+      return { ...current, proposed_nodes: [...current.proposed_nodes, blank] };
+    });
+  };
+
+  const updateProposalEdge = (index: number, patch: Partial<KnowledgeGraphProposalEdge>) => {
+    setProposal((current) => {
+      if (!current) return current;
+      const proposed_edges = current.proposed_edges.map((edge, i) =>
+        i === index ? { ...edge, ...patch } : edge,
+      );
+      return { ...current, proposed_edges };
+    });
+  };
+
+  const removeProposalEdge = (index: number) => {
+    setProposal((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        proposed_edges: current.proposed_edges.filter((_, i) => i !== index),
+      };
+    });
+  };
+
+  const addProposalEdge = () => {
+    setProposal((current) => {
+      if (!current) return current;
+      const blank: KnowledgeGraphProposalEdge = {
+        source_title: current.proposed_nodes[0]?.title ?? "",
+        target_title: current.proposed_nodes[1]?.title ?? current.existing_node_titles[0] ?? "",
+        relation: "extends",
+        strength: 0.6,
+        confidence: 0.65,
+        evidence: "",
+      };
+      return { ...current, proposed_edges: [...current.proposed_edges, blank] };
+    });
   };
 
   const flowNodes = React.useMemo<Node[]>(
@@ -344,41 +470,255 @@ export function KnowledgeGraphBoard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={factsOpen} onOpenChange={setFactsOpen}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Add Knowledge</DialogTitle>
-            <DialogDescription>
-              Paste arbitrary learning notes. The backend queues an Inngest job, asks the LLM
-              to extract graph facts, then merges them into the persisted graph.
-            </DialogDescription>
-          </DialogHeader>
+      <Dialog
+        open={factsOpen}
+        onOpenChange={(open) => {
+          setFactsOpen(open);
+          if (!open) resetFactsDialog();
+        }}
+      >
+        <DialogContent className={factsStep === "review" ? "sm:max-w-4xl" : "sm:max-w-2xl"}>
+          {factsStep === "input" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Add Knowledge</DialogTitle>
+                <DialogDescription>
+                  Paste a topic name and optional notes. The LLM proposes nodes and edges,
+                  you review and edit, then we async-merge into the graph.
+                </DialogDescription>
+              </DialogHeader>
 
-          <form className="grid gap-3" onSubmit={submitFacts}>
-            <Input
-              value={factsTitle}
-              onChange={(event) => setFactsTitle(event.target.value)}
-              placeholder="Optional title, e.g. Kafka broker basics"
+              <form className="grid gap-3" onSubmit={extractFacts}>
+                <Input
+                  value={factsTitle}
+                  onChange={(event) => setFactsTitle(event.target.value)}
+                  placeholder="Optional title, e.g. Kafka broker basics"
+                />
+                <textarea
+                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-44 rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                  value={factsText}
+                  onChange={(event) => setFactsText(event.target.value)}
+                  placeholder="Kafka brokers store topic partitions. Producers write records to topics. Consumers read records by subscribing to topics..."
+                />
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setFactsOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={!factsText.trim() || extracting}>
+                    {extracting ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="size-4" />
+                    )}
+                    Preview facts
+                  </Button>
+                </DialogFooter>
+              </form>
+            </>
+          ) : (
+            <ProposalReview
+              proposal={proposal}
+              merging={merging}
+              onBack={() => setFactsStep("input")}
+              onCommit={commitProposal}
+              onUpdateNode={updateProposalNode}
+              onRemoveNode={removeProposalNode}
+              onAddNode={addProposalNode}
+              onUpdateEdge={updateProposalEdge}
+              onRemoveEdge={removeProposalEdge}
+              onAddEdge={addProposalEdge}
             />
-            <textarea
-              className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-44 rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-              value={factsText}
-              onChange={(event) => setFactsText(event.target.value)}
-              placeholder="Kafka brokers store topic partitions. Producers write records to topics. Consumers read records by subscribing to topics..."
-            />
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setFactsOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={!factsText.trim() || submittingFacts}>
-                {submittingFacts ? <Loader2 className="size-4 animate-spin" /> : <FilePlus2 className="size-4" />}
-                Queue graph update
-              </Button>
-            </DialogFooter>
-          </form>
+          )}
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+const RELATION_OPTIONS: KnowledgeGraphEdge["relation"][] = [
+  "prerequisite",
+  "extends",
+  "analogous",
+  "contrasts",
+  "debugs",
+];
+
+function ProposalReview({
+  proposal,
+  merging,
+  onBack,
+  onCommit,
+  onUpdateNode,
+  onRemoveNode,
+  onAddNode,
+  onUpdateEdge,
+  onRemoveEdge,
+  onAddEdge,
+}: {
+  proposal: KnowledgeGraphProposal | null;
+  merging: boolean;
+  onBack: () => void;
+  onCommit: () => void;
+  onUpdateNode: (index: number, patch: Partial<KnowledgeGraphProposalNode>) => void;
+  onRemoveNode: (index: number) => void;
+  onAddNode: () => void;
+  onUpdateEdge: (index: number, patch: Partial<KnowledgeGraphProposalEdge>) => void;
+  onRemoveEdge: (index: number) => void;
+  onAddEdge: () => void;
+}) {
+  if (!proposal) return null;
+  const totalItems = proposal.proposed_nodes.length + proposal.proposed_edges.length;
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Review proposed facts</DialogTitle>
+        <DialogDescription>
+          The LLM extracted {proposal.proposed_nodes.length} nodes and{" "}
+          {proposal.proposed_edges.length} edges. Edit titles, summaries, and relations
+          before committing. Nodes flagged &quot;merging&quot; will fold into an existing
+          graph node.
+        </DialogDescription>
+      </DialogHeader>
+
+      <ScrollArea className="max-h-[60vh] pr-2">
+        <div className="space-y-5">
+          <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Nodes ({proposal.proposed_nodes.length})</h3>
+              <Button type="button" size="sm" variant="outline" onClick={onAddNode}>
+                <Plus className="size-4" />
+                Add node
+              </Button>
+            </div>
+            {proposal.proposed_nodes.length === 0 ? (
+              <p className="text-muted-foreground text-xs">No nodes proposed.</p>
+            ) : (
+              <ul className="space-y-2">
+                {proposal.proposed_nodes.map((node, index) => (
+                  <li key={`node-${index}`} className="rounded-md border p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {node.is_new ? (
+                          <Badge variant="default">New</Badge>
+                        ) : (
+                          <Badge variant="secondary">
+                            Merging into {node.matched_existing_title}
+                          </Badge>
+                        )}
+                        <Badge variant="outline">cluster: {node.cluster}</Badge>
+                      </div>
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label="Remove node"
+                        onClick={() => onRemoveNode(index)}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      <Input
+                        value={node.title}
+                        onChange={(event) => onUpdateNode(index, { title: event.target.value })}
+                        placeholder="Title"
+                      />
+                      <textarea
+                        className="border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-20 rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2"
+                        value={node.summary}
+                        onChange={(event) => onUpdateNode(index, { summary: event.target.value })}
+                        placeholder="Summary"
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Edges ({proposal.proposed_edges.length})</h3>
+              <Button type="button" size="sm" variant="outline" onClick={onAddEdge}>
+                <Plus className="size-4" />
+                Add edge
+              </Button>
+            </div>
+            {proposal.proposed_edges.length === 0 ? (
+              <p className="text-muted-foreground text-xs">
+                No edges proposed. Add edges manually or commit only the nodes.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {proposal.proposed_edges.map((edge, index) => (
+                  <li key={`edge-${index}`} className="rounded-md border p-3">
+                    <div className="flex items-center justify-end">
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label="Remove edge"
+                        onClick={() => onRemoveEdge(index)}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-[1fr_auto_1fr]">
+                      <Input
+                        value={edge.source_title}
+                        onChange={(event) =>
+                          onUpdateEdge(index, { source_title: event.target.value })
+                        }
+                        placeholder="Source title"
+                      />
+                      <select
+                        className="border-input bg-background rounded-md border px-2 py-2 text-sm"
+                        value={edge.relation}
+                        onChange={(event) =>
+                          onUpdateEdge(index, {
+                            relation: event.target.value as KnowledgeGraphEdge["relation"],
+                          })
+                        }
+                      >
+                        {RELATION_OPTIONS.map((rel) => (
+                          <option key={rel} value={rel}>
+                            {rel}
+                          </option>
+                        ))}
+                      </select>
+                      <Input
+                        value={edge.target_title}
+                        onChange={(event) =>
+                          onUpdateEdge(index, { target_title: event.target.value })
+                        }
+                        placeholder="Target title"
+                      />
+                    </div>
+                    <textarea
+                      className="border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring mt-2 min-h-12 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2"
+                      value={edge.evidence}
+                      onChange={(event) => onUpdateEdge(index, { evidence: event.target.value })}
+                      placeholder="Evidence (why this relation holds)"
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      </ScrollArea>
+
+      <DialogFooter className="gap-2">
+        <Button type="button" variant="outline" onClick={onBack}>
+          <ArrowLeft className="size-4" />
+          Back
+        </Button>
+        <Button type="button" onClick={onCommit} disabled={merging || totalItems === 0}>
+          {merging ? <Loader2 className="size-4 animate-spin" /> : <FilePlus2 className="size-4" />}
+          Commit to graph
+        </Button>
+      </DialogFooter>
+    </>
   );
 }
 
