@@ -164,3 +164,75 @@ class ActiveRecallStats(BaseModel):
     total_cards: int
     due_cards: int
     sessions: int
+
+
+KnowledgeGraphRelation = Literal["prerequisite", "extends", "analogous", "contrasts", "debugs"]
+KnowledgeGraphTrigger = Literal["session_export", "nightly_rebuild", "manual_refresh"]
+
+
+class KnowledgeGraphSourceSummary(BaseModel):
+    sessions: int = 0
+    documents: int = 0
+    cards: int = 0
+
+
+class KnowledgeGraphNode(BaseModel):
+    id: str
+    title: str
+    summary: str
+    revision_prompt: str
+    mastery: float = Field(ge=0, le=1)
+    confidence: float = Field(ge=0, le=1)
+    cluster: str
+    tags: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+    source_session_ids: list[str] = Field(default_factory=list)
+    position: CanvasPosition
+
+
+class KnowledgeGraphEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    relation: KnowledgeGraphRelation
+    strength: float = Field(ge=0, le=1)
+    evidence: str
+    source_session_ids: list[str] = Field(default_factory=list)
+
+
+class KnowledgeGraphUpdatePlan(BaseModel):
+    trigger: KnowledgeGraphTrigger
+    read_endpoint: str
+    write_endpoint: str
+    algorithm: str
+    notes: list[str] = Field(default_factory=list)
+
+
+class KnowledgeGraphPayload(BaseModel):
+    graph_id: str
+    user_id: str
+    version: int
+    generated_at: datetime
+    source_summary: KnowledgeGraphSourceSummary
+    nodes: list[KnowledgeGraphNode]
+    edges: list[KnowledgeGraphEdge]
+    update_plan: KnowledgeGraphUpdatePlan
+
+
+class KnowledgeGraphExportRequest(BaseModel):
+    prompt: str | None = None
+    nodes: list[CanvasNode] = Field(default_factory=list)
+    edges: list[CanvasEdge] = Field(default_factory=list)
+    facts: Any | None = None
+
+
+class KnowledgeGraphManualFactsRequest(BaseModel):
+    title: str | None = None
+    text: str = Field(min_length=1)
+
+
+class KnowledgeGraphExportResponse(BaseModel):
+    graph_id: str
+    build_id: str
+    queued: bool
+    message: str

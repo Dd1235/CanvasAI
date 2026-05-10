@@ -153,11 +153,27 @@ export async function exportSessionToKnowledgeGraph({
   nodes: CanvasNode[];
   edges: CanvasEdge[];
 }) {
-  return request<{ graph_id: string; queued: boolean; message: string }>(
+  return request<{ graph_id: string; build_id?: string; queued: boolean; message: string }>(
     `${KNOWLEDGE_GRAPH_EXPORT_ENDPOINT}/${sessionId}`,
     {
       method: "POST",
       body: { prompt, nodes, edges },
+    },
+  );
+}
+
+export async function addTextToKnowledgeGraph({
+  title,
+  text,
+}: {
+  title?: string;
+  text: string;
+}) {
+  return request<{ graph_id: string; build_id?: string; queued: boolean; message: string }>(
+    "/knowledge-graph/from-text",
+    {
+      method: "POST",
+      body: { title, text },
     },
   );
 }

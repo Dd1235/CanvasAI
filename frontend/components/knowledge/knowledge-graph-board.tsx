@@ -14,6 +14,7 @@ import {
 import {
   Brain,
   BookOpenCheck,
+  FilePlus2,
   Loader2,
   Network,
   PanelLeftClose,
@@ -23,11 +24,13 @@ import {
   Shuffle,
   Target,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import "@xyflow/react/dist/style.css";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +41,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  addTextToKnowledgeGraph,
   getKnowledgeGraph,
   KNOWLEDGE_GRAPH_ENDPOINT,
 } from "@/lib/canvasai-api";
@@ -61,13 +65,15 @@ type SprintItem = {
   why: string;
 };
 
-const CLUSTER_STYLES: Record<KnowledgeGraphNode["cluster"], string> = {
+const CLUSTER_STYLES: Record<string, string> = {
   "data-structures": "border-emerald-400 bg-emerald-50 text-emerald-950",
   "memory-model": "border-sky-400 bg-sky-50 text-sky-950",
   algorithms: "border-amber-400 bg-amber-50 text-amber-950",
   systems: "border-rose-400 bg-rose-50 text-rose-950",
   frontend: "border-violet-400 bg-violet-50 text-violet-950",
+  kafka: "border-cyan-400 bg-cyan-50 text-cyan-950",
 };
+const FALLBACK_CLUSTER_STYLE = "border-slate-400 bg-slate-50 text-slate-950";
 
 const EDGE_COLORS: Record<KnowledgeGraphEdge["relation"], string> = {
   prerequisite: "#0f766e",
@@ -93,6 +99,10 @@ export function KnowledgeGraphBoard() {
   const [panelOpen, setPanelOpen] = React.useState(true);
   const [selectedId, setSelectedId] = React.useState(graph.nodes[0]?.id);
   const [sprintOpen, setSprintOpen] = React.useState(false);
+  const [factsOpen, setFactsOpen] = React.useState(false);
+  const [factsTitle, setFactsTitle] = React.useState("");
+  const [factsText, setFactsText] = React.useState("");
+  const [submittingFacts, setSubmittingFacts] = React.useState(false);
 
   const selected = graph.nodes.find((node) => node.id === selectedId) ?? graph.nodes[0];
   const relatedEdges = graph.edges.filter(
@@ -100,8 +110,8 @@ export function KnowledgeGraphBoard() {
   );
   const sprintItems = React.useMemo(() => buildStudySprint(graph), [graph]);
 
-  const loadGraph = React.useCallback(async () => {
-    setLoading(true);
+  const loadGraph = React.useCallback(async (options: { silent?: boolean } = {}) => {
+    if (!options.silent) setLoading(true);
     try {
       const nextGraph = await getKnowledgeGraph();
       setGraph(nextGraph);
@@ -114,7 +124,7 @@ export function KnowledgeGraphBoard() {
       setGraph(MOCK_KNOWLEDGE_GRAPH);
       setSource("mock");
     } finally {
-      setLoading(false);
+      if (!options.silent) setLoading(false);
     }
   }, []);
 
@@ -123,6 +133,36 @@ export function KnowledgeGraphBoard() {
       void loadGraph();
     });
   }, [loadGraph]);
+
+  React.useEffect(() => {
+    const id = window.setInterval(() => {
+      void loadGraph({ silent: true });
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, [loadGraph]);
+
+  const submitFacts = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const text = factsText.trim();
+    if (!text) return;
+
+    setSubmittingFacts(true);
+    try {
+      const result = await addTextToKnowledgeGraph({
+        title: factsTitle.trim() || undefined,
+        text,
+      });
+      toast.success(result.message || "Knowledge graph facts queued");
+      setFactsOpen(false);
+      setFactsTitle("");
+      setFactsText("");
+      window.setTimeout(() => void loadGraph({ silent: true }), 3000);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not queue knowledge graph facts.");
+    } finally {
+      setSubmittingFacts(false);
+    }
+  };
 
   const flowNodes = React.useMemo<Node[]>(
     () =>
@@ -174,16 +214,23 @@ export function KnowledgeGraphBoard() {
           <Badge variant={source === "backend" ? "default" : "secondary"}>
             {source === "backend" ? "Backend graph" : "Mock graph"}
           </Badge>
+          <Badge variant="outline">
+            {graph.nodes.length} nodes / {graph.edges.length} edges
+          </Badge>
           <h1 className="text-foreground text-2xl font-semibold tracking-tight">
             Knowledge Graph
           </h1>
           <p className="text-muted-foreground max-w-3xl text-sm">
             Topic nodes, relationship edges, and revision prompts from the user learning graph.
-            The frontend already targets <code>{KNOWLEDGE_GRAPH_ENDPOINT}</code> and falls back
-            to this payload until backend graph storage is connected.
+            The frontend targets <code>{KNOWLEDGE_GRAPH_ENDPOINT}</code>, polls lightly for
+            completed async exports, and falls back to mock data only when the backend request fails.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setFactsOpen(true)}>
+            <FilePlus2 className="size-4" />
+            Add facts
+          </Button>
           <Button variant="default" onClick={() => setSprintOpen(true)}>
             <Brain className="size-4" />
             Study sprint
@@ -296,6 +343,41 @@ export function KnowledgeGraphBoard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={factsOpen} onOpenChange={setFactsOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add Knowledge</DialogTitle>
+            <DialogDescription>
+              Paste arbitrary learning notes. The backend queues an Inngest job, asks the LLM
+              to extract graph facts, then merges them into the persisted graph.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form className="grid gap-3" onSubmit={submitFacts}>
+            <Input
+              value={factsTitle}
+              onChange={(event) => setFactsTitle(event.target.value)}
+              placeholder="Optional title, e.g. Kafka broker basics"
+            />
+            <textarea
+              className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-44 rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+              value={factsText}
+              onChange={(event) => setFactsText(event.target.value)}
+              placeholder="Kafka brokers store topic partitions. Producers write records to topics. Consumers read records by subscribing to topics..."
+            />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setFactsOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!factsText.trim() || submittingFacts}>
+                {submittingFacts ? <Loader2 className="size-4 animate-spin" /> : <FilePlus2 className="size-4" />}
+                Queue graph update
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -374,7 +456,7 @@ function TopicNode({ topic, selected }: { topic: KnowledgeGraphNode; selected: b
     <div
       className={cn(
         "rounded-lg border-2 p-3 shadow-sm",
-        CLUSTER_STYLES[topic.cluster],
+        CLUSTER_STYLES[topic.cluster] ?? FALLBACK_CLUSTER_STYLE,
         selected && "ring-ring ring-2 ring-offset-2",
       )}
     >

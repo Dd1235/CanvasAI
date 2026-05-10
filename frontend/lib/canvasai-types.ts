@@ -33,6 +33,7 @@ export type SessionTurn = {
   payload: CanvasPayload;
   turn_index: number;
   created_at: string;
+  is_checkpoint?: boolean;
 };
 
 export type SessionSummary = {
@@ -124,7 +125,7 @@ export type KnowledgeGraphNode = {
   revision_prompt: string;
   mastery: number;
   confidence: number;
-  cluster: "data-structures" | "memory-model" | "algorithms" | "systems" | "frontend";
+  cluster: string;
   tags: string[];
   evidence: string[];
   source_session_ids: string[];
