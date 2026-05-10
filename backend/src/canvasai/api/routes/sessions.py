@@ -1,3 +1,4 @@
+import uuid
 from fastapi import APIRouter, HTTPException, Depends
 
 from canvasai.schemas import (
@@ -29,6 +30,12 @@ async def create_session(
 
 @router.get("/{session_id}", response_model=SessionDetail)
 async def get_session(session_id: str, user_id: str = Depends(get_current_user_id)):
+    # --- UUID VALIDATION ---
+    try:
+        uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Invalid session ID")
+        
     session = session_store.get_session(user_id, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found or access denied")
@@ -36,6 +43,13 @@ async def get_session(session_id: str, user_id: str = Depends(get_current_user_i
 
 @router.get("/{session_id}/history", response_model=SessionHistoryResponse)
 async def get_history(session_id: str, user_id: str = Depends(get_current_user_id)):
+    # --- UUID VALIDATION ---
+    try:
+        uuid.UUID(session_id)
+    except ValueError:
+        # If it's "demo", just return empty history gracefully
+        return SessionHistoryResponse(turns=[])
+        
     return SessionHistoryResponse(turns=session_store.history(user_id, session_id))
 
 @router.post("/{session_id}/revert/{turn_index}", response_model=SessionTurn)

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from canvasai.api.routes import active_recall, chat, documents, health, sessions, ws
+from canvasai.api.routes import active_recall, chat, documents, health, sessions, ws, resources
 from canvasai.config import get_settings
 
 
@@ -23,6 +23,8 @@ def create_app() -> FastAPI:
     app.include_router(active_recall.router)
     app.include_router(documents.router)
     app.include_router(ws.router)
+    app.include_router(resources.router)
+    
     return app
 
 
