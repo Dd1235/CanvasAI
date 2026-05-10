@@ -190,6 +190,32 @@ class KnowledgeGraphMergeTests(unittest.TestCase):
         self.assertEqual(data["edges"], [])
         self.assertEqual(data["source_summary"], {"sessions": 0, "documents": 0, "cards": 0})
 
+    def test_embedding_similarity_merges_lexically_distant_titles(self) -> None:
+        existing = _node("hash-table", "Hash Table", aliases=["Hash Table"])
+        existing.embedding = [1.0, 0.0, 0.0]
+        candidate = KGNodeCandidate(
+            title="Associative Array",
+            summary="Key-value lookup data structure.",
+            evidence=["payload-fact:0"],
+            embedding=[0.99, 0.05, 0.0],
+        )
+
+        async def reject_gate(*_args) -> bool:
+            return False
+
+        merged = asyncio.run(
+            merge_graph_candidates(
+                existing_nodes=[existing],
+                existing_edges=[],
+                candidate_nodes=[candidate],
+                candidate_edges=[],
+                same_concept_gate=reject_gate,
+            )
+        )
+        self.assertEqual(len(merged.nodes), 1)
+        self.assertEqual(merged.nodes[0].id, "hash-table")
+        self.assertIn("Associative Array", merged.nodes[0].aliases)
+
     def test_edge_with_unknown_endpoint_creates_placeholder_node(self) -> None:
         existing = _node("kafka", "Kafka")
         candidate = KGNodeCandidate(

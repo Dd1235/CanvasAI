@@ -4,9 +4,11 @@ import json
 import logging
 from typing import Any
 
+from canvasai.knowledge_graph.embeddings import embed_texts
 from canvasai.knowledge_graph.merge import (
     KGEdgeCandidate,
     KGNodeCandidate,
+    KGNodeRecord,
     merge_graph_candidates,
     normalize_topic_key,
 )
@@ -62,6 +64,8 @@ async def build_graph_from_session_export(
         existing_nodes=existing_nodes,
     )
 
+    await _attach_embeddings(candidate_nodes=candidate_nodes, existing_nodes=existing_nodes)
+
     merged = await merge_graph_candidates(
         existing_nodes=existing_nodes,
         existing_edges=existing_edges,
@@ -75,6 +79,42 @@ async def build_graph_from_session_export(
         nodes=merged.nodes,
         edges=merged.edges,
     )
+
+
+async def _attach_embeddings(
+    *,
+    candidate_nodes: list[KGNodeCandidate],
+    existing_nodes: list[KGNodeRecord],
+) -> None:
+    """Populate `.embedding` on candidates and existing nodes that lack one.
+
+    Cheap call when no API key is set: ``embed_texts`` returns Nones and merge
+    falls back to lexical similarity only.
+    """
+    targets: list[tuple[Any, str]] = []
+    for candidate in candidate_nodes:
+        if candidate.embedding:
+            continue
+        targets.append((candidate, _embedding_text(candidate.title, candidate.summary)))
+    for record in existing_nodes:
+        if record.embedding:
+            continue
+        targets.append((record, _embedding_text(record.title, record.summary)))
+
+    if not targets:
+        return
+
+    vectors = await embed_texts([text for _, text in targets])
+    for (target, _), vector in zip(targets, vectors):
+        target.embedding = vector
+
+
+def _embedding_text(title: str, summary: str) -> str:
+    title = (title or "").strip()
+    summary = (summary or "").strip()
+    if title and summary:
+        return f"{title}. {summary}"
+    return title or summary
 
 
 async def extract_candidates(

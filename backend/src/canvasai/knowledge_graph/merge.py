@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 
+from canvasai.knowledge_graph.embeddings import cosine_similarity
 from canvasai.schemas import KnowledgeGraphRelation
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,8 @@ logger = logging.getLogger(__name__)
 HIGH_MATCH_THRESHOLD = 0.86
 AMBIGUOUS_MATCH_THRESHOLD = 0.60
 EDGE_ENDPOINT_MATCH_THRESHOLD = 0.72
+EMBEDDING_HIGH_THRESHOLD = 0.86
+EMBEDDING_AMBIGUOUS_THRESHOLD = 0.78
 SYMMETRIC_RELATIONS = {"analogous", "contrasts"}
 
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
@@ -48,6 +51,7 @@ class KGNodeCandidate:
     confidence: float = 0.65
     evidence: list[str] = field(default_factory=list)
     source_session_ids: list[str] = field(default_factory=list)
+    embedding: list[float] | None = None
 
 
 @dataclass(slots=True)
@@ -75,6 +79,7 @@ class KGNodeRecord:
     source_session_ids: list[str]
     position: dict[str, float]
     aliases: list[str] = field(default_factory=list)
+    embedding: list[float] | None = None
 
 
 @dataclass(slots=True)
@@ -232,7 +237,10 @@ async def _find_matching_node(
     best: tuple[float, KGNodeRecord] | None = None
     for node in nodes:
         node_aliases = [node.title, *node.aliases]
-        score = max(lexical_similarity(candidate.title, alias) for alias in node_aliases)
+        lex = max(lexical_similarity(candidate.title, alias) for alias in node_aliases)
+        emb = cosine_similarity(candidate.embedding, node.embedding) if candidate.embedding else 0.0
+        # Use the stronger signal so semantic matches win when titles diverge.
+        score = max(lex, _scale_embedding_score(emb))
         if best is None or score > best[0]:
             best = (score, node)
 
@@ -244,6 +252,22 @@ async def _find_matching_node(
     if score >= AMBIGUOUS_MATCH_THRESHOLD and same_concept_gate is not None:
         return node if await same_concept_gate(candidate, node, score) else None
     return None
+
+
+def _scale_embedding_score(embedding_score: float) -> float:
+    """Map embedding cosine to the same [0,1] band the lexical thresholds use.
+
+    Cosine for unrelated OpenAI embeddings sits ~0.2-0.4, so we shift the band
+    to keep `HIGH_MATCH_THRESHOLD` meaningful for both signals.
+    """
+    if embedding_score >= EMBEDDING_HIGH_THRESHOLD:
+        return 1.0
+    if embedding_score >= EMBEDDING_AMBIGUOUS_THRESHOLD:
+        return AMBIGUOUS_MATCH_THRESHOLD + (
+            (embedding_score - EMBEDDING_AMBIGUOUS_THRESHOLD)
+            / (EMBEDDING_HIGH_THRESHOLD - EMBEDDING_AMBIGUOUS_THRESHOLD)
+        ) * (HIGH_MATCH_THRESHOLD - AMBIGUOUS_MATCH_THRESHOLD)
+    return 0.0
 
 
 def _new_node(candidate: KGNodeCandidate, used_ids: set[str], index: int) -> KGNodeRecord:
@@ -274,6 +298,7 @@ def _new_node(candidate: KGNodeCandidate, used_ids: set[str], index: int) -> KGN
         source_session_ids=_clean_list(candidate.source_session_ids),
         position=_stable_position(index),
         aliases=_clean_aliases(_candidate_aliases(candidate)),
+        embedding=list(candidate.embedding) if candidate.embedding else None,
     )
 
 
@@ -281,6 +306,8 @@ def _merge_node(existing: KGNodeRecord, candidate: KGNodeCandidate) -> KGNodeRec
     summary = candidate.summary.strip() or existing.summary
     revision_prompt = candidate.revision_prompt.strip() or existing.revision_prompt
     cluster = existing.cluster if existing.cluster != "general" else (candidate.cluster or existing.cluster)
+    # Prefer the freshest embedding so node text and vector stay in sync.
+    embedding = list(candidate.embedding) if candidate.embedding else existing.embedding
     return replace(
         existing,
         summary=summary,
@@ -291,6 +318,7 @@ def _merge_node(existing: KGNodeRecord, candidate: KGNodeCandidate) -> KGNodeRec
         evidence=_union(existing.evidence, candidate.evidence),
         source_session_ids=_union(existing.source_session_ids, candidate.source_session_ids),
         aliases=_clean_aliases(_union(existing.aliases, _candidate_aliases(candidate))),
+        embedding=embedding,
     )
 
 

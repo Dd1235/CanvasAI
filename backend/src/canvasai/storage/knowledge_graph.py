@@ -84,6 +84,7 @@ def get_current_graph(user_id: str) -> KnowledgeGraphPayload:
 
 def get_latest_records(user_id: str) -> tuple[list[KGNodeRecord], list[KGEdgeRecord]]:
     payload = get_current_graph(user_id)
+    extras = _node_extras_from_storage(user_id, payload.version)
     nodes = [
         KGNodeRecord(
             id=node.id,
@@ -97,7 +98,8 @@ def get_latest_records(user_id: str) -> tuple[list[KGNodeRecord], list[KGEdgeRec
             evidence=node.evidence,
             source_session_ids=node.source_session_ids,
             position={"x": node.position.x, "y": node.position.y},
-            aliases=_node_aliases_from_storage(user_id, payload.version, node.id),
+            aliases=extras.get(node.id, {}).get("aliases", []),
+            embedding=extras.get(node.id, {}).get("embedding"),
         )
         for node in payload.nodes
     ]
@@ -199,7 +201,19 @@ def append_graph_version(
     graph_version_id = version_row["id"]
 
     if nodes:
-        db.table("kg_nodes").insert([_node_row(graph_version_id, user_id, node) for node in nodes]).execute()
+        node_rows = [_node_row(graph_version_id, user_id, node) for node in nodes]
+        try:
+            db.table("kg_nodes").insert(node_rows).execute()
+        except Exception as exc:  # noqa: BLE001
+            # Older deployments without the pgvector migration applied will
+            # reject the embedding column. Retry without embeddings so the
+            # build still completes.
+            if "embedding" not in str(exc):
+                raise
+            logger.info("kg storage: retrying node insert without embedding column (%s)", exc)
+            for row in node_rows:
+                row.pop("embedding", None)
+            db.table("kg_nodes").insert(node_rows).execute()
     if edges:
         db.table("kg_edges").insert([_edge_row(graph_version_id, user_id, edge) for edge in edges]).execute()
 
@@ -294,6 +308,65 @@ def _node_aliases_from_storage(user_id: str, version: int, node_id: str) -> list
     return list(res.data[0].get("aliases") or []) if res.data else []
 
 
+def _node_extras_from_storage(user_id: str, version: int) -> dict[str, dict[str, Any]]:
+    """Bulk-load aliases + embeddings for the latest version's nodes.
+
+    Embedding column is optional — older Supabase deployments without the
+    pgvector migration return rows without it. Treat that as "no embedding".
+    """
+    if version <= 0:
+        return {}
+    latest = _latest_version_row(user_id)
+    if latest is None:
+        return {}
+    try:
+        res = (
+            get_supabase_admin()
+            .table("kg_nodes")
+            .select("id,aliases,embedding")
+            .eq("graph_version_id", latest["id"])
+            .eq("user_id", user_id)
+            .execute()
+        )
+        rows = res.data or []
+    except Exception as exc:  # noqa: BLE001
+        logger.info("kg storage: embedding column missing or unreadable (%s)", exc)
+        res = (
+            get_supabase_admin()
+            .table("kg_nodes")
+            .select("id,aliases")
+            .eq("graph_version_id", latest["id"])
+            .eq("user_id", user_id)
+            .execute()
+        )
+        rows = res.data or []
+
+    extras: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        extras[row["id"]] = {
+            "aliases": list(row.get("aliases") or []),
+            "embedding": _coerce_embedding(row.get("embedding")),
+        }
+    return extras
+
+
+def _coerce_embedding(value: Any) -> list[float] | None:
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return [float(item) for item in value]
+    if isinstance(value, str):
+        # pgvector returns "[0.1,0.2,...]" via PostgREST when the row is read raw.
+        cleaned = value.strip().strip("[]")
+        if not cleaned:
+            return None
+        try:
+            return [float(item) for item in cleaned.split(",")]
+        except ValueError:
+            return None
+    return None
+
+
 def _node_model(row: dict[str, Any]) -> KnowledgeGraphNode:
     return KnowledgeGraphNode(
         id=row["id"],
@@ -323,7 +396,7 @@ def _edge_model(row: dict[str, Any]) -> KnowledgeGraphEdge:
 
 
 def _node_row(graph_version_id: str, user_id: str, node: KGNodeRecord) -> dict[str, Any]:
-    return {
+    row: dict[str, Any] = {
         "graph_version_id": graph_version_id,
         "user_id": user_id,
         "id": node.id,
@@ -339,6 +412,9 @@ def _node_row(graph_version_id: str, user_id: str, node: KGNodeRecord) -> dict[s
         "position": node.position,
         "aliases": node.aliases,
     }
+    if node.embedding:
+        row["embedding"] = list(node.embedding)
+    return row
 
 
 def _edge_row(graph_version_id: str, user_id: str, edge: KGEdgeRecord) -> dict[str, Any]:
