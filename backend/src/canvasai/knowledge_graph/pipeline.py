@@ -109,10 +109,19 @@ async def extract_candidates(
 
     try:
         raw = await get_provider().complete(system=system, user=json.dumps(context, default=str))
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("kg.extract: LLM call failed (%s); using fallback candidates", exc)
         return fallback_nodes, fallback_edges
 
     nodes, edges = _parse_extraction(raw, source_id=source_id)
+    logger.info(
+        "kg.extract: parsed %d nodes and %d edges from LLM (raw_len=%d)",
+        len(nodes),
+        len(edges),
+        len(raw or ""),
+    )
+    if not nodes and not edges:
+        logger.info("kg.extract: empty LLM extraction — raw preview=%r", (raw or "")[:240])
     nodes = _ensure_manual_title_node(nodes, artifacts, source_id=source_id)
     enriched = await _enrich_sparse_manual_facts(
         artifacts,
@@ -123,6 +132,11 @@ async def extract_candidates(
         enriched_node, enriched_edges = enriched
         nodes = _upsert_candidate_node(nodes, enriched_node)
         edges = [*edges, *enriched_edges]
+        logger.info(
+            "kg.extract: sparse-fact enrichment added node=%r and %d edges",
+            enriched_node.title,
+            len(enriched_edges),
+        )
     edges = [
         *edges,
         *_same_category_edges_for_sparse_manual(
@@ -133,6 +147,7 @@ async def extract_candidates(
         ),
     ]
     if not nodes:
+        logger.info("kg.extract: no nodes after enrichment — using fallback candidates")
         return fallback_nodes, fallback_edges
     return nodes, edges or fallback_edges
 
