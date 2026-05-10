@@ -18,6 +18,14 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 @router.get("", response_model=list[SessionSummary])
 async def list_sessions(user_id: str = Depends(get_current_user_id)):
+    # --- UUID VALIDATION FOR USER ID ---
+    try:
+        uuid.UUID(user_id)
+    except ValueError:
+        # If user_id is a placeholder (like during a demo/unauthenticated state), 
+        # return an empty list so the sidebar doesn't break.
+        return []
+        
     return session_store.list_sessions(user_id)
 
 @router.post("", response_model=CreateSessionResponse)

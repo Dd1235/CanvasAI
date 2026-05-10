@@ -147,7 +147,8 @@ export function CanvasWorkbench({
         const frames = historyTurns.map((turn: any) => ({
           index: turn.turn_index,
           prompt: turn.prompt,
-          summary: "Loaded from backend session history.",
+          // Extract the ai_response from the payload, fallback if missing
+          summary: turn.payload?.ai_response || "Canvas updated.",
           nodes: turn.payload.nodes.length,
           edges: turn.payload.edges.length,
           is_checkpoint: turn.is_checkpoint,
