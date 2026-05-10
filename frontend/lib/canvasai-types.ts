@@ -167,3 +167,35 @@ export type KnowledgeGraphPayload = {
   edges: KnowledgeGraphEdge[];
   update_plan: KnowledgeGraphUpdatePlan;
 };
+
+export type KnowledgeGraphProposalNode = {
+  title: string;
+  summary: string;
+  revision_prompt: string;
+  aliases: string[];
+  tags: string[];
+  cluster: string;
+  confidence: number;
+  evidence: string[];
+  matched_existing_id: string | null;
+  matched_existing_title: string | null;
+  is_new: boolean;
+};
+
+export type KnowledgeGraphProposalEdge = {
+  source_title: string;
+  target_title: string;
+  relation: KnowledgeGraphEdge["relation"];
+  strength: number;
+  confidence: number;
+  evidence: string;
+};
+
+export type KnowledgeGraphProposal = {
+  source_id: string;
+  title: string | null;
+  text: string | null;
+  proposed_nodes: KnowledgeGraphProposalNode[];
+  proposed_edges: KnowledgeGraphProposalEdge[];
+  existing_node_titles: string[];
+};

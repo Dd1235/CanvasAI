@@ -7,6 +7,9 @@ import type {
   ChatMessage,
   ChatSessionSummary,
   KnowledgeGraphPayload,
+  KnowledgeGraphProposal,
+  KnowledgeGraphProposalEdge,
+  KnowledgeGraphProposalNode,
   SessionSummary,
   SessionTurn,
   VisualizationTool,
@@ -174,6 +177,41 @@ export async function addTextToKnowledgeGraph({
     {
       method: "POST",
       body: { title, text },
+    },
+  );
+}
+
+export async function proposeKnowledgeGraphFromText({
+  title,
+  text,
+}: {
+  title?: string;
+  text: string;
+}) {
+  return request<KnowledgeGraphProposal>("/knowledge-graph/extract", {
+    method: "POST",
+    body: { title, text },
+  });
+}
+
+export async function mergeKnowledgeGraphProposal({
+  source_id,
+  title,
+  text,
+  proposed_nodes,
+  proposed_edges,
+}: {
+  source_id: string;
+  title?: string | null;
+  text?: string | null;
+  proposed_nodes: KnowledgeGraphProposalNode[];
+  proposed_edges: KnowledgeGraphProposalEdge[];
+}) {
+  return request<{ graph_id: string; build_id?: string; queued: boolean; message: string }>(
+    "/knowledge-graph/merge",
+    {
+      method: "POST",
+      body: { source_id, title, text, proposed_nodes, proposed_edges },
     },
   );
 }
