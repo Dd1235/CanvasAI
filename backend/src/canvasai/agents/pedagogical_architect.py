@@ -1,41 +1,36 @@
-"""Agent 2 — Pedagogical Architect.
-
-Takes the technical directive and formulates a visual script: an
-instructional sequence of canvas mutations (highlight, reroute, animate).
-"""
-
-from __future__ import annotations
 from typing import Any
+from pydantic import BaseModel
 from canvasai.agents.base import AgentBase
+
+# We use structured output here to split the conversational response from the technical script
+class ArchitectOutput(BaseModel):
+    ai_chat_response: str
+    visual_script: str
 
 class PedagogicalArchitect(AgentBase):
     role = "agent_2_architect"
     system_prompt = (
-        "You are a Visual Layout Architect specializing in 'Inside-Out' learning mechanics. "
-        "Translate the provided Technical Directive into a precise node-and-edge spatial script.\n\n"
-        "RULES:\n"
-        "1. NO CONVERSATION: Output ONLY the step-by-step structural logic.\n"
-        "2. EXPOSE MECHANICS: Focus on visualizing the low-level state changes, data flows, or structural components of the concept.\n"
-        "3. SPATIAL LOGIC: Explicitly state the spatial grouping (e.g., 'Arrange Agent A nodes vertically on the left', 'Use distinct colors for state changes').\n"
-        "4. ALIGNMENT: Strictly utilize the technical terms and examples mandated by the Synthesizer."
+        "You are a Visual Tutor. You have two jobs based on the Facts and Intent:\n"
+        "1. Write a friendly, 1-2 sentence 'ai_chat_response' addressing the user and explaining the analogy/example you chose.\n"
+        "2. Write a precise 'visual_script' instructing the UI how to draw nodes/edges. Focus on 'Inside-Out' mechanics."
     )
 
     async def __call__(self, state: dict[str, Any]) -> dict[str, Any]:
-        directive = state.get("technical_directive", "")
-        # Optional: We could use a slightly more expensive model here if needed
+        intent = state.get("intent_statement", "")
+        facts = state.get("retrieved_facts", "")
+        nodes_len = len(state.get("nodes", []))
         
-        user_input = (
-            f"TECHNICAL_DIRECTIVE: {directive}\n"
-            f"CURRENT_STRUCTURE: {len(state.get('nodes', []))} nodes, {len(state.get('edges', []))} edges."
-        )
-
-        visual_script = await self.llm.complete(
+        user_input = f"INTENT: {intent}\n\nFACTS: {facts}\n\nCURRENT NODES: {nodes_len}"
+        
+        output: ArchitectOutput = await self.llm.structured_complete(
+            model_schema=ArchitectOutput,
             system=self.system_prompt,
             user=user_input,
-            model="gemini-2.5-flash-lite" # Still using the cheap model for reasoning
+            model="gemini-2.5-flash" 
         )
 
         return {
-            "visual_script": visual_script,
-            "trace": self._trace(state, "Designed visual teaching steps"),
+            "ai_response_draft": output.ai_chat_response,
+            "visual_script": output.visual_script,
+            "trace": self._trace(state, "Designed visual layout and drafted response"),
         }

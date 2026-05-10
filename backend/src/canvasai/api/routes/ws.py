@@ -59,15 +59,40 @@ async def session_socket(ws: WebSocket, session_id: str, token: str | None = Que
             # --- Fetch Chat History from the Database ---
             try:
                 past_turns = session_store.history(user_id, session_id)
-                chat_history = [{"role": "user", "content": turn.prompt} for turn in past_turns[-5:]]
+                chat_history = []
+                for turn in past_turns[-5:]: # Last 5 turns for context
+                    chat_history.append({"role": "user", "content": turn.prompt})
+                    
+                    # Pull AI response from the payload to cure "amnesia"
+                    payload_dict = turn.payload if isinstance(turn.payload, dict) else turn.payload.model_dump()
+                    ai_text = payload_dict.get("ai_response", "I updated the canvas.")
+                    chat_history.append({"role": "assistant", "content": ai_text})
             except Exception as e:
                 logger.error(f"Failed to fetch history for session {session_id}: {e}")
                 chat_history = []
+                
+             # --- 2. Fetch Session Grounding Resources (NEW) ---
+            try:
+                # db is the Supabase client initialized at the start of session_socket
+                resource_response = db.table("canvas_resources") \
+                    .select("content") \
+                    .eq("session_id", session_id) \
+                    .execute()
+                
+                # Combine all resource texts into one block for the Researcher Agent
+                if resource_response.data:
+                    external_docs = "\n\n---\n\n".join([r["content"] for r in resource_response.data])
+                else:
+                    external_docs = "No external documents provided."
+            except Exception as e:
+                logger.error(f"Resource fetch failed for session {session_id}: {e}")
+                external_docs = "No external documents provided."
 
             # --- Inject chat_history into the LangGraph state ---
             initial = {
                 "prompt": str(msg.get("prompt", "")),
                 "chat_history": chat_history,
+                "external_docs": external_docs, # <--- Grounding data injected here
                 "nodes": list(msg.get("nodes") or []),
                 "edges": list(msg.get("edges") or []),
                 "trace": [],

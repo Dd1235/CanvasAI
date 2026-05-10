@@ -55,6 +55,7 @@ import {
   branchSessionFromTurn,
 } from "@/lib/canvasai-api";
 import { createClient } from "@/lib/supabase/client";
+import { ResourceModal } from "./ResourceModal";
 import type {
   AgentTrace,
   CanvasEdge,
@@ -146,7 +147,8 @@ export function CanvasWorkbench({
         const frames = historyTurns.map((turn: any) => ({
           index: turn.turn_index,
           prompt: turn.prompt,
-          summary: "Loaded from backend session history.",
+          // Extract the ai_response from the payload, fallback if missing
+          summary: turn.payload?.ai_response || "Canvas updated.",
           nodes: turn.payload.nodes.length,
           edges: turn.payload.edges.length,
           is_checkpoint: turn.is_checkpoint,
@@ -266,7 +268,14 @@ export function CanvasWorkbench({
             window.clearTimeout(timeout);
             setNodes(frame.nodes);
             setEdges(frame.edges);
-            appendFrame({ prompt: trimmedPrompt, summary: "Rendered from backend LangGraph payload.", nodes: frame.nodes.length, edges: frame.edges.length, payload: { nodes: frame.nodes, edges: frame.edges } });
+            appendFrame({ 
+              prompt: trimmedPrompt, 
+              // Use the AI's conversational response!
+              summary: (frame as any).ai_response || "Canvas updated.", 
+              nodes: frame.nodes.length, 
+              edges: frame.edges.length, 
+              payload: { nodes: frame.nodes, edges: frame.edges } 
+            });
             toast.success("Canvas updated");
             socket.close();
             resolve();
@@ -375,7 +384,8 @@ export function CanvasWorkbench({
           
           <div className="mt-4 flex flex-wrap gap-2">
             <Button type="button" size="sm" variant="outline" onClick={() => goToFrame(deckFrames.length - 1)}><RotateCcw className="size-4 mr-1.5" /> Latest</Button>
-                        <Button type="button" size="sm" variant="outline" onClick={restoreInitial}><RotateCcw className="size-4 mr-1.5" /> Restore</Button>
+            <Button type="button" size="sm" variant="outline" onClick={restoreInitial}><RotateCcw className="size-4 mr-1.5" /> Restore</Button>
+            <ResourceModal sessionId={sessionId} />
             <Button type="button" size="sm" variant="outline" onClick={addToRecall} disabled={recalling}>
               {recalling ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <BookOpenCheck className="size-4 mr-1.5" />} Recall
             </Button>
@@ -489,7 +499,7 @@ export function CanvasWorkbench({
                 </div>
               </PanelBlock>
 
-                            <PanelBlock title="Agent Trace" icon={Zap}>
+              <PanelBlock title="Agent Trace" icon={Zap}>
                 <div className="space-y-3">
                   {trace.map((entry, index) => {
                     const Icon = AGENT_ICONS[index] ?? CheckCircle2;
