@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import re
 import unicodedata
@@ -8,6 +9,8 @@ from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 
 from canvasai.schemas import KnowledgeGraphRelation
+
+logger = logging.getLogger(__name__)
 
 HIGH_MATCH_THRESHOLD = 0.86
 AMBIGUOUS_MATCH_THRESHOLD = 0.60
@@ -159,10 +162,34 @@ async def merge_graph_candidates(
     edge_key_index = {_edge_key(edge.source, edge.target, edge.relation): edge for edge in edges}
     edge_ids = {edge.id for edge in edges}
 
+    skipped_self_edges = 0
     for candidate in candidate_edges:
-        source = _resolve_node_id(candidate.source_title, candidate_title_to_node_id, final_alias_index)
-        target = _resolve_node_id(candidate.target_title, candidate_title_to_node_id, final_alias_index)
-        if not source or not target or source == target:
+        source = _resolve_or_create_node(
+            candidate.source_title,
+            candidate_title_to_node_id,
+            final_alias_index,
+            nodes,
+            used_ids,
+            candidate.source_session_ids,
+        )
+        target = _resolve_or_create_node(
+            candidate.target_title,
+            candidate_title_to_node_id,
+            final_alias_index,
+            nodes,
+            used_ids,
+            candidate.source_session_ids,
+        )
+        if not source or not target:
+            logger.info(
+                "kg.merge: skipping edge (unresolvable endpoint) source=%r target=%r relation=%r",
+                candidate.source_title,
+                candidate.target_title,
+                candidate.relation,
+            )
+            continue
+        if source == target:
+            skipped_self_edges += 1
             continue
 
         source, target = _canonical_edge_endpoints(source, target, candidate.relation)
@@ -179,6 +206,15 @@ async def merge_graph_candidates(
         edges[edges.index(existing)] = merged_edge
         edge_key_index[key] = merged_edge
 
+    if skipped_self_edges:
+        logger.info("kg.merge: skipped %d self-loop edges", skipped_self_edges)
+    logger.info(
+        "kg.merge: produced %d nodes, %d edges from %d candidate nodes, %d candidate edges",
+        len(nodes),
+        len(edges),
+        len(candidate_nodes),
+        len(candidate_edges),
+    )
     return MergedGraph(nodes=nodes, edges=edges)
 
 
@@ -353,6 +389,63 @@ def _resolve_node_id(
     if best and best[0] >= EDGE_ENDPOINT_MATCH_THRESHOLD:
         return best[1].id
     return None
+
+
+def _resolve_or_create_node(
+    title: str,
+    candidate_title_to_node_id: dict[str, str],
+    alias_index: dict[str, KGNodeRecord],
+    nodes: list[KGNodeRecord],
+    used_ids: set[str],
+    source_session_ids: list[str],
+) -> str | None:
+    clean_title = (title or "").strip()
+    if not clean_title:
+        return None
+    resolved = _resolve_node_id(clean_title, candidate_title_to_node_id, alias_index)
+    if resolved:
+        return resolved
+
+    placeholder = _placeholder_node(clean_title, used_ids, len(nodes), source_session_ids)
+    nodes.append(placeholder)
+    used_ids.add(placeholder.id)
+    key = normalize_topic_key(clean_title)
+    alias_index[key] = placeholder
+    candidate_title_to_node_id[key] = placeholder.id
+    logger.info(
+        "kg.merge: created placeholder node id=%r title=%r for unresolved edge endpoint",
+        placeholder.id,
+        clean_title,
+    )
+    return placeholder.id
+
+
+def _placeholder_node(
+    title: str,
+    used_ids: set[str],
+    index: int,
+    source_session_ids: list[str],
+) -> KGNodeRecord:
+    base = normalize_topic_key(title)
+    node_id = base
+    suffix = 2
+    while node_id in used_ids:
+        node_id = f"{base}-{suffix}"
+        suffix += 1
+    return KGNodeRecord(
+        id=node_id,
+        title=title,
+        summary=f"{title} (referenced by an extracted edge; not yet enriched).",
+        revision_prompt=f"Briefly explain {title} and how it connects to the linked concept.",
+        mastery=0.3,
+        confidence=0.4,
+        cluster="general",
+        tags=[],
+        evidence=["edge-endpoint-placeholder"],
+        source_session_ids=_clean_list(source_session_ids),
+        position=_stable_position(index),
+        aliases=[title],
+    )
 
 
 def _build_alias_index(nodes: list[KGNodeRecord]) -> dict[str, KGNodeRecord]:

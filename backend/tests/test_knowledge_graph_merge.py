@@ -190,6 +190,36 @@ class KnowledgeGraphMergeTests(unittest.TestCase):
         self.assertEqual(data["edges"], [])
         self.assertEqual(data["source_summary"], {"sessions": 0, "documents": 0, "cards": 0})
 
+    def test_edge_with_unknown_endpoint_creates_placeholder_node(self) -> None:
+        existing = _node("kafka", "Kafka")
+        candidate = KGNodeCandidate(
+            title="Kafka",
+            summary="Kafka is a distributed log.",
+            evidence=["payload-fact:0"],
+        )
+        edge = KGEdgeCandidate(
+            source_title="Kafka",
+            target_title="Zookeeper",
+            relation="prerequisite",
+            evidence="Kafka used to require Zookeeper for coordination.",
+        )
+
+        merged = asyncio.run(
+            merge_graph_candidates(
+                existing_nodes=[existing],
+                existing_edges=[],
+                candidate_nodes=[candidate],
+                candidate_edges=[edge],
+            )
+        )
+
+        node_titles = {node.title for node in merged.nodes}
+        self.assertIn("Zookeeper", node_titles)
+        self.assertEqual(len(merged.edges), 1)
+        edge_record = merged.edges[0]
+        target_node = next(node for node in merged.nodes if node.id == edge_record.target)
+        self.assertEqual(target_node.title, "Zookeeper")
+
     def test_sparse_optimization_facts_link_to_existing_optimization_nodes(self) -> None:
         existing = _node(
             "function-inlining",
