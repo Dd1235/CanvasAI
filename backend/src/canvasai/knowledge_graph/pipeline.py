@@ -4,7 +4,9 @@ import json
 import logging
 from typing import Any
 
-from canvasai.knowledge_graph.embeddings import embed_texts
+from dataclasses import replace
+
+from canvasai.knowledge_graph.embeddings import cosine_similarity, embed_texts
 from canvasai.knowledge_graph.merge import (
     KGEdgeCandidate,
     KGNodeCandidate,
@@ -25,6 +27,13 @@ from canvasai.storage import knowledge_graph as kg_store
 logger = logging.getLogger(__name__)
 
 RELATIONS: set[str] = {"prerequisite", "extends", "analogous", "contrasts", "debugs"}
+
+# Candidate dedup runs against items produced from the *same* user input,
+# so we can be more aggressive than the merge phase's HIGH_MATCH_THRESHOLD
+# (0.86). A value of 0.75 catches single-character transpositions like
+# "Throughput" vs "Throguhput" without merging genuinely distinct topics.
+CANDIDATE_DEDUP_LEXICAL_THRESHOLD = 0.75
+CANDIDATE_DEDUP_EMBEDDING_THRESHOLD = 0.9
 
 
 async def run_build_job(build_id: str) -> dict[str, Any]:
@@ -99,6 +108,9 @@ async def propose_from_text(
         existing_nodes=existing_nodes,
     )
     await _attach_embeddings(candidate_nodes=candidate_nodes, existing_nodes=existing_nodes)
+    candidate_nodes, candidate_edges = collapse_duplicate_candidates(
+        candidate_nodes, candidate_edges
+    )
 
     proposal_nodes = [
         _candidate_to_proposal_node(candidate, existing_nodes)
@@ -140,6 +152,9 @@ async def merge_proposal(
     candidate_nodes = [_proposal_to_candidate_node(node, source_id) for node in proposed_nodes]
     candidate_edges = [_proposal_to_candidate_edge(edge, source_id) for edge in proposed_edges]
     await _attach_embeddings(candidate_nodes=candidate_nodes, existing_nodes=existing_nodes)
+    candidate_nodes, candidate_edges = collapse_duplicate_candidates(
+        candidate_nodes, candidate_edges
+    )
 
     merged = await merge_graph_candidates(
         existing_nodes=existing_nodes,
@@ -153,6 +168,106 @@ async def merge_proposal(
         source_summary=artifacts["source_summary"],
         nodes=merged.nodes,
         edges=merged.edges,
+    )
+
+
+def collapse_duplicate_candidates(
+    candidate_nodes: list[KGNodeCandidate],
+    candidate_edges: list[KGEdgeCandidate],
+) -> tuple[list[KGNodeCandidate], list[KGEdgeCandidate]]:
+    """Fold near-duplicate candidate nodes (typos, casing, embedding-similar) into one.
+
+    The downstream merge phase already does this against the persisted graph,
+    but the *proposal* shown to the user comes from the raw extraction —
+    without this step the UI would show "Throughput" and "Throguhput" as two
+    separate New nodes. After collapsing we also rewrite edge endpoints so
+    references to the dropped title point at the survivor's title.
+    """
+    if not candidate_nodes:
+        return candidate_nodes, candidate_edges
+
+    survivors: list[KGNodeCandidate] = []
+    title_remap: dict[str, str] = {}
+
+    for candidate in candidate_nodes:
+        match_index = _find_duplicate_index(candidate, survivors)
+        if match_index is None:
+            survivors.append(candidate)
+            continue
+        merged = _merge_candidate_pair(survivors[match_index], candidate)
+        survivors[match_index] = merged
+        for alias in [candidate.title, *candidate.aliases]:
+            key = normalize_topic_key(alias)
+            if key:
+                title_remap[key] = merged.title
+        logger.info(
+            "kg.extract: collapsed duplicate candidate %r into %r",
+            candidate.title,
+            merged.title,
+        )
+
+    if not title_remap:
+        return survivors, candidate_edges
+
+    rewritten_edges: list[KGEdgeCandidate] = []
+    for edge in candidate_edges:
+        new_source = title_remap.get(normalize_topic_key(edge.source_title), edge.source_title)
+        new_target = title_remap.get(normalize_topic_key(edge.target_title), edge.target_title)
+        if normalize_topic_key(new_source) == normalize_topic_key(new_target):
+            continue
+        rewritten_edges.append(replace(edge, source_title=new_source, target_title=new_target))
+    return survivors, rewritten_edges
+
+
+def _find_duplicate_index(
+    candidate: KGNodeCandidate,
+    survivors: list[KGNodeCandidate],
+) -> int | None:
+    candidate_aliases = [candidate.title, *candidate.aliases]
+    candidate_keys = {normalize_topic_key(a) for a in candidate_aliases if a}
+    for index, survivor in enumerate(survivors):
+        survivor_aliases = [survivor.title, *survivor.aliases]
+        survivor_keys = {normalize_topic_key(a) for a in survivor_aliases if a}
+        if candidate_keys & survivor_keys:
+            return index
+        lex = max(
+            lexical_similarity(left, right)
+            for left in candidate_aliases
+            for right in survivor_aliases
+        )
+        if lex >= CANDIDATE_DEDUP_LEXICAL_THRESHOLD:
+            return index
+        if candidate.embedding and survivor.embedding:
+            if cosine_similarity(candidate.embedding, survivor.embedding) >= CANDIDATE_DEDUP_EMBEDDING_THRESHOLD:
+                return index
+    return None
+
+
+def _merge_candidate_pair(
+    primary: KGNodeCandidate,
+    other: KGNodeCandidate,
+) -> KGNodeCandidate:
+    # Pick the longer title as canonical — typos and lowercase variants tend
+    # to be shorter or noisier than the well-formed version.
+    canonical_title = primary.title if len(primary.title) >= len(other.title) else other.title
+    canonical_summary = primary.summary if len(primary.summary) >= len(other.summary) else other.summary
+    canonical_revision = (
+        primary.revision_prompt
+        if len(primary.revision_prompt) >= len(other.revision_prompt)
+        else other.revision_prompt
+    )
+    embedding = primary.embedding or other.embedding
+    return KGNodeCandidate(
+        title=canonical_title.strip(),
+        summary=canonical_summary,
+        revision_prompt=canonical_revision,
+        aliases=_dedupe_strs([primary.title, other.title, *primary.aliases, *other.aliases]),
+        tags=_dedupe_strs([*primary.tags, *other.tags]),
+        cluster=primary.cluster or other.cluster or "general",
+        confidence=max(primary.confidence, other.confidence),
+        evidence=_dedupe_strs([*primary.evidence, *other.evidence]),
+        source_session_ids=_dedupe_strs([*primary.source_session_ids, *other.source_session_ids]),
+        embedding=embedding,
     )
 
 

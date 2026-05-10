@@ -12,7 +12,10 @@ from canvasai.knowledge_graph.merge import (
     merge_graph_candidates,
     normalize_topic_key,
 )
-from canvasai.knowledge_graph.pipeline import _same_category_edges_for_sparse_manual
+from canvasai.knowledge_graph.pipeline import (
+    _same_category_edges_for_sparse_manual,
+    collapse_duplicate_candidates,
+)
 from canvasai.storage.knowledge_graph import empty_graph
 
 
@@ -189,6 +192,51 @@ class KnowledgeGraphMergeTests(unittest.TestCase):
         self.assertEqual(data["nodes"], [])
         self.assertEqual(data["edges"], [])
         self.assertEqual(data["source_summary"], {"sessions": 0, "documents": 0, "cards": 0})
+
+    def test_collapse_duplicate_candidates_folds_typo_and_casing(self) -> None:
+        first = KGNodeCandidate(
+            title="Throughput",
+            summary="Throughput is a measure of how many units of information a system can process in a given amount of time.",
+            tags=["performance"],
+            cluster="performance-metrics",
+        )
+        typo = KGNodeCandidate(
+            title="Throguhput",
+            summary="Throughput refers to the amount of data processed by a system in a given amount of time.",
+            tags=["performance"],
+            cluster="performance metrics",
+        )
+        edge = KGEdgeCandidate(
+            source_title="Throguhput",
+            target_title="Latency",
+            relation="contrasts",
+            evidence="Higher throughput often increases latency.",
+        )
+
+        nodes, edges = collapse_duplicate_candidates([first, typo], [edge])
+
+        self.assertEqual(len(nodes), 1)
+        survivor = nodes[0]
+        self.assertEqual(survivor.title, "Throughput")
+        self.assertIn("Throguhput", survivor.aliases)
+        self.assertEqual(len(edges), 1)
+        self.assertEqual(edges[0].source_title, "Throughput")
+
+    def test_collapse_duplicate_candidates_uses_embedding_for_distant_titles(self) -> None:
+        first = KGNodeCandidate(
+            title="Hash Table",
+            summary="Key-value store with O(1) lookup.",
+            embedding=[1.0, 0.0, 0.0],
+        )
+        rephrased = KGNodeCandidate(
+            title="Associative Array",
+            summary="Generic key-value lookup data structure.",
+            embedding=[0.99, 0.01, 0.0],
+        )
+
+        nodes, _ = collapse_duplicate_candidates([first, rephrased], [])
+        self.assertEqual(len(nodes), 1)
+        self.assertIn("Associative Array", nodes[0].aliases)
 
     def test_embedding_similarity_merges_lexically_distant_titles(self) -> None:
         existing = _node("hash-table", "Hash Table", aliases=["Hash Table"])
