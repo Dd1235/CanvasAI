@@ -10,6 +10,7 @@ class ArchitectOutput(BaseModel):
 
 class PedagogicalArchitect(AgentBase):
     role = "agent_2_architect"
+    model_tier = "heavy"
     
     # The ultimate "Brainwashing" prompt
     system_prompt = (
@@ -51,7 +52,7 @@ class PedagogicalArchitect(AgentBase):
                 model_schema=ArchitectOutput,
                 system=self.system_prompt,
                 user=user_input,
-                model="gpt-4o"
+                model=self.model_name
             )
 
             return {

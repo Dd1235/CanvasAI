@@ -3,6 +3,7 @@ from canvasai.agents.base import AgentBase
 
 class ContextSynthesizer(AgentBase):
     role = "agent_1_researcher"
+    model_tier = "fast"
     system_prompt = (
         "You are a Factual Research Engine. Your goal is to synthesize a teaching strategy "
         "using the provided EXTERNAL_DOCS and the User's INTENT.\n\n"
@@ -21,7 +22,7 @@ class ContextSynthesizer(AgentBase):
         
         user_input = f"USER_INTENT: {intent}\n\nEXTERNAL_DOCS: {docs}"
         
-        facts = await self.llm.complete(system=self.system_prompt, user=user_input, model="gpt-4o-mini")
+        facts = await self.llm.complete(system=self.system_prompt, user=user_input, model=self.model_name)
         return {
             "retrieved_facts": facts,
             "trace": self._trace(state, "Synthesized research using fallback hierarchy"),

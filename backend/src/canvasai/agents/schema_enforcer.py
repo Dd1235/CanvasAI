@@ -5,6 +5,7 @@ from canvasai.schemas import CanvasPayload
 
 class SchemaEnforcer(AgentBase):
     role = "agent_3_enforcer"
+    model_tier = "heavy"
     system_prompt = (
         "You are a React Flow Schema Compiler. Generate the JSON payload strictly following the Visual Script.\n\n"
         "SCHEMA & PERSISTENCE RULES:\n"
@@ -34,7 +35,7 @@ class SchemaEnforcer(AgentBase):
             model_schema=CanvasPayload,
             system=self.system_prompt,
             user=user_input,
-            model="gpt-4o"
+            model=self.model_name
         )
 
         return {

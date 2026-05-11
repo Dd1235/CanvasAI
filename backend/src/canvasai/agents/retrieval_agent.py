@@ -3,6 +3,7 @@ from canvasai.agents.base import AgentBase
 
 class RetrievalAgent(AgentBase):
     role = "agent_0_intent"
+    model_tier = "fast"
     system_prompt = (
         "You are an Intent Analyzer. Look at the User Prompt and the Chat History. "
         "Figure out EXACTLY what the user wants to learn or modify.\n"
@@ -17,7 +18,7 @@ class RetrievalAgent(AgentBase):
         user_input = f"HISTORY:\n{history_str}\n\nLATEST PROMPT: {prompt}"
         
         # UPGRADED TO GPT-4o-MINI
-        intent = await self.llm.complete(system=self.system_prompt, user=user_input, model="gpt-4o-mini")
+        intent = await self.llm.complete(system=self.system_prompt, user=user_input, model=self.model_name)
         return {
             "intent_statement": intent,
             "trace": self._trace(state, "Analyzed user intent and context"),
