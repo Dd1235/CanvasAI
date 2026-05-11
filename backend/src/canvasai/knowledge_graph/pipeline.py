@@ -163,6 +163,7 @@ async def merge_proposal(
         candidate_edges=candidate_edges,
         same_concept_gate=_same_concept_gate,
     )
+    kg_store.apply_mastery_scores(user_id=user_id, nodes=merged.nodes, edges=merged.edges)
     return kg_store.append_graph_version(
         user_id=user_id,
         source_summary=artifacts["source_summary"],
@@ -369,6 +370,7 @@ async def build_graph_from_session_export(
         candidate_edges=candidate_edges,
         same_concept_gate=_same_concept_gate,
     )
+    kg_store.apply_mastery_scores(user_id=user_id, nodes=merged.nodes, edges=merged.edges)
     return kg_store.append_graph_version(
         user_id=user_id,
         source_summary=artifacts["source_summary"],

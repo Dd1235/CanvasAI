@@ -5,6 +5,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from canvasai.knowledge_graph.mastery import (
+    TopicStats,
+    compute_confidence,
+    compute_mastery,
+)
 from canvasai.knowledge_graph.merge import KGEdgeRecord, KGNodeRecord
 from canvasai.schemas import (
     CanvasPosition,
@@ -466,3 +471,215 @@ def _safe_count(query) -> int:
     except Exception as exc:  # noqa: BLE001
         logger.info("knowledge graph count query skipped: %s", exc)
         return 0
+
+
+# ---------------------------------------------------------------------------
+# Topic stats (kg_topic_stats) — persists across kg_versions rebuilds and
+# feeds the mastery formula. Safe to call even if the migration hasn't been
+# applied yet: missing-table errors degrade to empty stats.
+# ---------------------------------------------------------------------------
+
+
+def get_topic_stats(user_id: str) -> dict[str, TopicStats]:
+    try:
+        rows = (
+            get_supabase_admin()
+            .table("kg_topic_stats")
+            .select("node_id,practice_count,last_practiced_at")
+            .eq("user_id", user_id)
+            .execute()
+            .data
+            or []
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.info("kg storage: topic stats unavailable (%s)", exc)
+        return {}
+    result: dict[str, TopicStats] = {}
+    for row in rows:
+        result[row["node_id"]] = TopicStats(
+            practice_count=int(row.get("practice_count") or 0),
+            last_practiced_at=_parse_optional_datetime(row.get("last_practiced_at")),
+        )
+    return result
+
+
+def get_topic_stats_payload(user_id: str) -> dict[str, dict[str, Any]]:
+    try:
+        rows = (
+            get_supabase_admin()
+            .table("kg_topic_stats")
+            .select("node_id,practice_count,last_practiced_at,last_principle,first_seen_at")
+            .eq("user_id", user_id)
+            .execute()
+            .data
+            or []
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.info("kg storage: topic stats unavailable (%s)", exc)
+        return {}
+    return {
+        row["node_id"]: {
+            "practice_count": int(row.get("practice_count") or 0),
+            "last_practiced_at": row.get("last_practiced_at"),
+            "last_principle": row.get("last_principle"),
+            "first_seen_at": row.get("first_seen_at"),
+        }
+        for row in rows
+    }
+
+
+def record_practice(user_id: str, node_id: str, principle: str) -> TopicStats:
+    db = get_supabase_admin()
+    now = datetime.now(UTC)
+    now_iso = now.isoformat()
+    existing = (
+        db.table("kg_topic_stats")
+        .select("practice_count")
+        .eq("user_id", user_id)
+        .eq("node_id", node_id)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if existing:
+        new_count = int(existing[0].get("practice_count") or 0) + 1
+        db.table("kg_topic_stats").update(
+            {
+                "practice_count": new_count,
+                "last_practiced_at": now_iso,
+                "last_principle": principle,
+                "updated_at": now_iso,
+            }
+        ).eq("user_id", user_id).eq("node_id", node_id).execute()
+    else:
+        new_count = 1
+        db.table("kg_topic_stats").insert(
+            {
+                "user_id": user_id,
+                "node_id": node_id,
+                "practice_count": new_count,
+                "last_practiced_at": now_iso,
+                "last_principle": principle,
+                "first_seen_at": now_iso,
+                "updated_at": now_iso,
+            }
+        ).execute()
+    return TopicStats(practice_count=new_count, last_practiced_at=now)
+
+
+def update_node_scores(
+    user_id: str,
+    node_id: str,
+    *,
+    mastery: float,
+    confidence: float,
+) -> bool:
+    """Patch the latest version's kg_nodes row for instant UI feedback.
+
+    Returns True if a row was updated. The next full build will recompute
+    these values from scratch anyway, so this is only for the "you just
+    practiced" snap.
+    """
+    latest = _latest_version_row(user_id)
+    if latest is None:
+        return False
+    res = (
+        get_supabase_admin()
+        .table("kg_nodes")
+        .update({"mastery": mastery, "confidence": confidence})
+        .eq("graph_version_id", latest["id"])
+        .eq("user_id", user_id)
+        .eq("id", node_id)
+        .execute()
+    )
+    return bool(res.data)
+
+
+def apply_mastery_scores(
+    *,
+    user_id: str,
+    nodes: list[KGNodeRecord],
+    edges: list[KGEdgeRecord],
+) -> None:
+    """Mutate merged nodes in-place with signal-based mastery + confidence.
+
+    Called from the pipeline right before persistence. Replaces the
+    LLM/default guesses with deterministic formulas grounded in (1) the
+    user's persisted practice events and (2) the node's own graph context.
+    """
+    stats = get_topic_stats(user_id)
+    edges_by_node: dict[str, int] = {}
+    for edge in edges:
+        edges_by_node[edge.source] = edges_by_node.get(edge.source, 0) + 1
+        edges_by_node[edge.target] = edges_by_node.get(edge.target, 0) + 1
+    for node in nodes:
+        node_stats = stats.get(node.id, TopicStats())
+        node.mastery = compute_mastery(
+            stats=node_stats,
+            source_session_ids=list(node.source_session_ids),
+        )
+        node.confidence = compute_confidence(
+            edges_touching_node=edges_by_node.get(node.id, 0),
+            evidence_items=len(node.evidence),
+        )
+
+
+def compute_node_scores_now(
+    *,
+    user_id: str,
+    node_id: str,
+    stats: TopicStats,
+) -> tuple[float, float] | None:
+    """Recompute one node's mastery + confidence using the current graph.
+
+    Returns ``None`` if the node isn't in the latest version.
+    """
+    latest = _latest_version_row(user_id)
+    if latest is None:
+        return None
+    db = get_supabase_admin()
+    version_id = latest["id"]
+    node_row = (
+        db.table("kg_nodes")
+        .select("source_session_ids,evidence")
+        .eq("graph_version_id", version_id)
+        .eq("user_id", user_id)
+        .eq("id", node_id)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not node_row:
+        return None
+    edge_rows = (
+        db.table("kg_edges")
+        .select("source,target")
+        .eq("graph_version_id", version_id)
+        .eq("user_id", user_id)
+        .or_(f"source.eq.{node_id},target.eq.{node_id}")
+        .execute()
+        .data
+        or []
+    )
+    mastery = compute_mastery(
+        stats=stats,
+        source_session_ids=list(node_row[0].get("source_session_ids") or []),
+    )
+    confidence = compute_confidence(
+        edges_touching_node=len(edge_rows),
+        evidence_items=len(node_row[0].get("evidence") or []),
+    )
+    return mastery, confidence
+
+
+def _parse_optional_datetime(value: Any) -> datetime | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return _parse_datetime(value)
+    except (TypeError, ValueError):
+        return None

@@ -168,6 +168,9 @@ class ActiveRecallStats(BaseModel):
 
 KnowledgeGraphRelation = Literal["prerequisite", "extends", "analogous", "contrasts", "debugs"]
 KnowledgeGraphTrigger = Literal["session_export", "nightly_rebuild", "manual_refresh"]
+KnowledgeGraphPracticePrinciple = Literal[
+    "retrieval", "prerequisite", "interleaving", "teach-back"
+]
 
 
 class KnowledgeGraphSourceSummary(BaseModel):
@@ -291,3 +294,23 @@ class KnowledgeGraphMergeRequest(BaseModel):
     text: str | None = None
     proposed_nodes: list[KnowledgeGraphProposalNode]
     proposed_edges: list[KnowledgeGraphProposalEdge]
+
+
+class KnowledgeGraphTopicStat(BaseModel):
+    practice_count: int = 0
+    last_practiced_at: datetime | None = None
+    last_principle: KnowledgeGraphPracticePrinciple | None = None
+    first_seen_at: datetime | None = None
+
+
+class KnowledgeGraphPracticeRequest(BaseModel):
+    node_id: str = Field(min_length=1)
+    principle: KnowledgeGraphPracticePrinciple = "retrieval"
+
+
+class KnowledgeGraphPracticeResponse(BaseModel):
+    node_id: str
+    mastery: float = Field(ge=0, le=1)
+    confidence: float = Field(ge=0, le=1)
+    practice_count: int
+    last_practiced_at: datetime

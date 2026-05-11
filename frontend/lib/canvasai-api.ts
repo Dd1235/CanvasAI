@@ -7,9 +7,12 @@ import type {
   ChatMessage,
   ChatSessionSummary,
   KnowledgeGraphPayload,
+  KnowledgeGraphPracticePrinciple,
+  KnowledgeGraphPracticeResponse,
   KnowledgeGraphProposal,
   KnowledgeGraphProposalEdge,
   KnowledgeGraphProposalNode,
+  KnowledgeGraphTopicStats,
   SessionSummary,
   SessionTurn,
   VisualizationTool,
@@ -143,6 +146,20 @@ export async function deleteSessionRecallCards(sessionId: string) {
 
 export async function getKnowledgeGraph() {
   return request<KnowledgeGraphPayload>(KNOWLEDGE_GRAPH_ENDPOINT);
+}
+
+export async function getKnowledgeGraphTopicStats() {
+  return request<KnowledgeGraphTopicStats>("/knowledge-graph/stats");
+}
+
+export async function recordKnowledgeGraphPractice(
+  node_id: string,
+  principle: KnowledgeGraphPracticePrinciple,
+) {
+  return request<KnowledgeGraphPracticeResponse>("/knowledge-graph/practice", {
+    method: "POST",
+    body: { node_id, principle },
+  });
 }
 
 export async function exportSessionToKnowledgeGraph({

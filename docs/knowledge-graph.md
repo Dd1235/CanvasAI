@@ -69,6 +69,8 @@ Inngest worker writes via the service-role client.
 | Method | Path                                  | Sync? | Used by                   |
 | ------ | ------------------------------------- | ----- | ------------------------- |
 | GET    | `/knowledge-graph/current`            | sync  | Frontend graph board.     |
+| GET    | `/knowledge-graph/stats`              | sync  | Frontend study sprint (per-node practice history). |
+| POST   | `/knowledge-graph/practice`           | sync  | Frontend study sprint "Mark practiced" — bumps mastery + writes back. |
 | POST   | `/knowledge-graph/from-session/{id}`  | async | Workbench "Graph" button. |
 | POST   | `/knowledge-graph/from-text`          | async | Manual one-shot (legacy). |
 | POST   | `/knowledge-graph/extract`            | sync  | Manual review flow, step 1. |
@@ -236,6 +238,7 @@ Frontend KG board: http://localhost:3000/dashboard/knowledge.
 1. [`backend/sql/knowledge_graph.sql`](../backend/sql/knowledge_graph.sql) — base tables + RLS.
 2. [`backend/sql/knowledge_graph_embeddings.sql`](../backend/sql/knowledge_graph_embeddings.sql) — pgvector + embedding column. Enable the `vector` extension first (Dashboard → Database → Extensions).
 3. [`backend/sql/knowledge_graph_user_proposal.sql`](../backend/sql/knowledge_graph_user_proposal.sql) — adds `user_proposal` to the `source_type` check.
+4. [`backend/sql/knowledge_graph_topic_stats.sql`](../backend/sql/knowledge_graph_topic_stats.sql) — `kg_topic_stats` table (per-node practice events that feed mastery) + opts `kg_versions` into the Supabase Realtime publication so the frontend can subscribe to builds.
 
 ### Required env vars
 

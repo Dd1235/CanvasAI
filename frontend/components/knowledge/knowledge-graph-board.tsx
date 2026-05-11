@@ -15,7 +15,9 @@ import {
   ArrowLeft,
   Brain,
   BookOpenCheck,
+  Check,
   FilePlus2,
+  GraduationCap,
   Loader2,
   Network,
   PanelLeftClose,
@@ -46,23 +48,28 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   getKnowledgeGraph,
+  getKnowledgeGraphTopicStats,
   KNOWLEDGE_GRAPH_ENDPOINT,
   mergeKnowledgeGraphProposal,
   proposeKnowledgeGraphFromText,
+  recordKnowledgeGraphPractice,
 } from "@/lib/canvasai-api";
+import { createClient } from "@/lib/supabase/client";
 import type {
   KnowledgeGraphEdge,
   KnowledgeGraphNode,
   KnowledgeGraphPayload,
+  KnowledgeGraphPracticePrinciple,
   KnowledgeGraphProposal,
   KnowledgeGraphProposalEdge,
   KnowledgeGraphProposalNode,
+  KnowledgeGraphTopicStats,
 } from "@/lib/canvasai-types";
 import { MOCK_KNOWLEDGE_GRAPH } from "@/lib/mock-knowledge-graph";
 import { cn } from "@/lib/utils";
 
 type GraphSource = "backend" | "mock";
-type SprintPrinciple = "retrieval" | "prerequisite" | "interleaving";
+type SprintPrinciple = KnowledgeGraphPracticePrinciple;
 
 type SprintItem = {
   id: string;
@@ -72,6 +79,25 @@ type SprintItem = {
   prompt: string;
   why: string;
 };
+
+// Pulse animation for newly-arrived (Realtime) and just-practiced nodes.
+// Kept inline so this stays in pure-KG territory and doesn't touch shared CSS.
+const PULSE_KEYFRAMES = `
+@keyframes kgNodeArrive {
+  0%   { box-shadow: 0 0 0 0 rgba(34,197,94,0.7); transform: scale(0.92); }
+  40%  { box-shadow: 0 0 0 14px rgba(34,197,94,0.25); transform: scale(1.04); }
+  100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); transform: scale(1); }
+}
+.kg-pulse {
+  animation: kgNodeArrive 1.6s ease-out;
+  border-radius: 12px;
+}
+`;
+
+// Tunables for sprint selection. Pulled out so the heuristic is easy to scan.
+const SPRINT_RECENCY_PENALTY_DAYS = 1; // anything practiced within this window is deprioritized
+const SPRINT_TEACHBACK_THRESHOLD = 0.7; // min mastery to be eligible for teach-back
+const SPRINT_TEACH_COOLDOWN_DAYS = 7; // skip recent teach-backs unless this many days have passed
 
 type ClusterPalette = {
   border: string;
@@ -158,6 +184,7 @@ const PRINCIPLE_META: Record<
   retrieval: { label: "Retrieval practice", icon: Target },
   prerequisite: { label: "Prerequisite repair", icon: Route },
   interleaving: { label: "Interleaving", icon: Shuffle },
+  "teach-back": { label: "Teach-back", icon: GraduationCap },
 };
 
 export function KnowledgeGraphBoard() {
@@ -174,12 +201,25 @@ export function KnowledgeGraphBoard() {
   const [extracting, setExtracting] = React.useState(false);
   const [merging, setMerging] = React.useState(false);
   const [proposal, setProposal] = React.useState<KnowledgeGraphProposal | null>(null);
+  const [stats, setStats] = React.useState<KnowledgeGraphTopicStats>({});
+  const [pulsingIds, setPulsingIds] = React.useState<Set<string>>(new Set());
+  const [practicingId, setPracticingId] = React.useState<string | null>(null);
+  const prevNodeIdsRef = React.useRef<Set<string>>(new Set());
 
   const selected = graph.nodes.find((node) => node.id === selectedId) ?? graph.nodes[0];
   const relatedEdges = graph.edges.filter(
     (edge) => edge.source === selected?.id || edge.target === selected?.id,
   );
-  const sprintItems = React.useMemo(() => buildStudySprint(graph), [graph]);
+  const sprintItems = React.useMemo(() => buildStudySprint(graph, stats), [graph, stats]);
+
+  const loadStats = React.useCallback(async () => {
+    try {
+      const next = await getKnowledgeGraphTopicStats();
+      setStats(next);
+    } catch {
+      // Stats are best-effort — empty means "no practice yet".
+    }
+  }, []);
 
   const loadGraph = React.useCallback(async (options: { silent?: boolean } = {}) => {
     if (!options.silent) setLoading(true);
@@ -202,15 +242,117 @@ export function KnowledgeGraphBoard() {
   React.useEffect(() => {
     queueMicrotask(() => {
       void loadGraph();
+      void loadStats();
     });
-  }, [loadGraph]);
+  }, [loadGraph, loadStats]);
 
+  // Realtime: kg_versions inserts mean a new build just landed. Refetch
+  // (graph + stats) and let the pulse-on-arrive effect highlight the deltas.
+  // Falls through harmlessly if the channel can't subscribe (e.g. local dev
+  // without the publication migration applied).
+  React.useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("kg-versions")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "kg_versions" },
+        () => {
+          void loadGraph({ silent: true });
+          void loadStats();
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [loadGraph, loadStats]);
+
+  // Fallback poll — kept as a safety net when Realtime isn't wired up yet.
+  // Cheap (15s, silent) so it doesn't compete with subscriptions.
   React.useEffect(() => {
     const id = window.setInterval(() => {
       void loadGraph({ silent: true });
     }, 15000);
     return () => window.clearInterval(id);
   }, [loadGraph]);
+
+  // Pulse the *new* node ids whenever the graph changes. Ignores the very
+  // first render (prev is empty) so we don't flash every node on initial load.
+  React.useEffect(() => {
+    const current = new Set(graph.nodes.map((node) => node.id));
+    const prev = prevNodeIdsRef.current;
+    prevNodeIdsRef.current = current;
+    if (prev.size === 0) return;
+
+    const arrived: string[] = [];
+    for (const id of current) {
+      if (!prev.has(id)) arrived.push(id);
+    }
+    if (arrived.length === 0) return;
+
+    setPulsingIds((existing) => {
+      const merged = new Set(existing);
+      for (const id of arrived) merged.add(id);
+      return merged;
+    });
+    const timer = window.setTimeout(() => {
+      setPulsingIds((existing) => {
+        const next = new Set(existing);
+        for (const id of arrived) next.delete(id);
+        return next;
+      });
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [graph.nodes]);
+
+  const handlePracticed = React.useCallback(
+    async (item: SprintItem) => {
+      setPracticingId(item.id);
+      try {
+        const result = await recordKnowledgeGraphPractice(item.topicId, item.principle);
+        setGraph((current) => ({
+          ...current,
+          nodes: current.nodes.map((node) =>
+            node.id === item.topicId
+              ? { ...node, mastery: result.mastery, confidence: result.confidence }
+              : node,
+          ),
+        }));
+        setStats((current) => ({
+          ...current,
+          [item.topicId]: {
+            practice_count: result.practice_count,
+            last_practiced_at: result.last_practiced_at,
+            last_principle: item.principle,
+            first_seen_at: current[item.topicId]?.first_seen_at ?? result.last_practiced_at,
+          },
+        }));
+        setPulsingIds((existing) => {
+          const merged = new Set(existing);
+          merged.add(item.topicId);
+          return merged;
+        });
+        window.setTimeout(() => {
+          setPulsingIds((existing) => {
+            const next = new Set(existing);
+            next.delete(item.topicId);
+            return next;
+          });
+        }, 1500);
+        toast.success(
+          `Practiced ${item.title} — mastery ${Math.round(result.mastery * 100)}%`,
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Could not record practice.",
+        );
+      } finally {
+        setPracticingId(null);
+      }
+    },
+    [],
+  );
 
   const resetFactsDialog = React.useCallback(() => {
     setFactsStep("input");
@@ -359,7 +501,13 @@ export function KnowledgeGraphBoard() {
         type: "default",
         position: positions.get(topic.id) ?? topic.position,
         data: {
-          label: <TopicNode topic={topic} selected={topic.id === selected?.id} />,
+          label: (
+            <TopicNode
+              topic={topic}
+              selected={topic.id === selected?.id}
+              pulsing={pulsingIds.has(topic.id)}
+            />
+          ),
         },
         style: {
           width: 220,
@@ -370,7 +518,7 @@ export function KnowledgeGraphBoard() {
           boxShadow: "none",
         },
       })),
-    [graph.nodes, positions, selected?.id],
+    [graph.nodes, positions, selected?.id, pulsingIds],
   );
 
   const flowEdges = React.useMemo<Edge[]>(
@@ -397,6 +545,7 @@ export function KnowledgeGraphBoard() {
 
   return (
     <div className="flex h-[calc(100svh-3.5rem)] min-h-0 flex-col gap-4 p-4 md:p-6">
+      <style dangerouslySetInnerHTML={{ __html: PULSE_KEYFRAMES }} />
       <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0 space-y-2">
           <Badge variant={source === "backend" ? "default" : "secondary"}>
@@ -492,9 +641,16 @@ export function KnowledgeGraphBoard() {
           </DialogHeader>
 
           <div className="grid gap-3">
+            {sprintItems.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                Sprint needs at least one node — add facts to the graph first.
+              </p>
+            ) : null}
             {sprintItems.map((item) => {
               const meta = PRINCIPLE_META[item.principle];
               const Icon = meta.icon;
+              const stat = stats[item.topicId];
+              const isPracticing = practicingId === item.id;
               return (
                 <article key={item.id} className="rounded-md border p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -503,19 +659,41 @@ export function KnowledgeGraphBoard() {
                         <Icon className="size-4" />
                         <h3 className="text-sm font-semibold">{item.title}</h3>
                       </div>
-                      <Badge variant="secondary">{meta.label}</Badge>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary">{meta.label}</Badge>
+                        {stat?.practice_count ? (
+                          <Badge variant="outline" className="text-[10px]">
+                            {stat.practice_count} prior {stat.practice_count === 1 ? "rep" : "reps"}
+                          </Badge>
+                        ) : null}
+                      </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setSelectedId(item.topicId);
-                        setPanelOpen(true);
-                        setSprintOpen(false);
-                      }}
-                    >
-                      Open topic
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedId(item.topicId);
+                          setPanelOpen(true);
+                          setSprintOpen(false);
+                        }}
+                      >
+                        Open topic
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="default"
+                        disabled={isPracticing}
+                        onClick={() => void handlePracticed(item)}
+                      >
+                        {isPracticing ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Check className="size-4" />
+                        )}
+                        Mark practiced
+                      </Button>
+                    </div>
                   </div>
                   <p className="mt-3 text-sm">{item.prompt}</p>
                   <p className="text-muted-foreground mt-2 text-xs">{item.why}</p>
@@ -784,59 +962,121 @@ function ProposalReview({
   );
 }
 
-function buildStudySprint(graph: KnowledgeGraphPayload): SprintItem[] {
-  const byMastery = [...graph.nodes].sort((a, b) => a.mastery - b.mastery);
-  const weakest = byMastery[0] ?? graph.nodes[0];
-  const prerequisiteEdge = graph.edges
+// Sprint selection — stats-aware, four-principle.
+//
+// Priority score = (1 - mastery) * 0.6 + (1 - confidence) * 0.4
+//                  * stalenessBoost (penalize anything practiced within the
+//                  last SPRINT_RECENCY_PENALTY_DAYS so the user doesn't see
+//                  the same item twice in a row).
+//
+// Slots:
+//   1. Retrieval     — highest priority node                  (active recall)
+//   2. Prerequisite  — largest mastery gap across prereq edge (foundational repair)
+//   3. Interleaving  — different cluster from #1              (transfer)
+//   4. Teach-back    — high mastery + cool-down satisfied     (Feynman consolidation)
+function buildStudySprint(
+  graph: KnowledgeGraphPayload,
+  stats: KnowledgeGraphTopicStats,
+): SprintItem[] {
+  if (!graph.nodes.length) return [];
+  const now = Date.now();
+  const DAY = 86_400_000;
+
+  const scored = graph.nodes.map((node) => {
+    const stat = stats[node.id];
+    const daysSince = stat?.last_practiced_at
+      ? (now - new Date(stat.last_practiced_at).getTime()) / DAY
+      : Number.POSITIVE_INFINITY;
+    const stalenessBoost =
+      daysSince < SPRINT_RECENCY_PENALTY_DAYS
+        ? daysSince / SPRINT_RECENCY_PENALTY_DAYS
+        : 1;
+    const need = (1 - node.mastery) * 0.6 + (1 - node.confidence) * 0.4;
+    return { node, priority: need * stalenessBoost };
+  });
+  const byPriority = [...scored].sort((a, b) => b.priority - a.priority);
+
+  const retrieval = byPriority[0]?.node;
+
+  const prereq = graph.edges
     .filter((edge) => edge.relation === "prerequisite")
     .map((edge) => ({
       edge,
       source: graph.nodes.find((node) => node.id === edge.source),
       target: graph.nodes.find((node) => node.id === edge.target),
     }))
-    .filter((item) => item.source && item.target)
+    .filter(
+      (item): item is { edge: KnowledgeGraphEdge; source: KnowledgeGraphNode; target: KnowledgeGraphNode } =>
+        Boolean(item.source && item.target),
+    )
     .sort((a, b) => {
-      const aGap = (a.target?.mastery ?? 0) - (a.source?.mastery ?? 0);
-      const bGap = (b.target?.mastery ?? 0) - (b.source?.mastery ?? 0);
-      return bGap - aGap;
+      const gapA = a.target.mastery - a.source.mastery;
+      const gapB = b.target.mastery - b.source.mastery;
+      return gapB - gapA;
     })[0];
-  const interleaved =
-    byMastery.find((node) => node.cluster !== weakest?.cluster && node.id !== prerequisiteEdge?.source?.id) ??
-    byMastery[1] ??
-    weakest;
 
-  return [
-    weakest
+  const interleave = byPriority.find(
+    (entry) =>
+      entry.node.cluster !== retrieval?.cluster &&
+      entry.node.id !== retrieval?.id &&
+      entry.node.id !== prereq?.source.id,
+  )?.node;
+
+  const teachable = [...graph.nodes]
+    .filter((node) => node.mastery >= SPRINT_TEACHBACK_THRESHOLD)
+    .filter((node) => node.id !== retrieval?.id && node.id !== interleave?.id)
+    .filter((node) => {
+      const stat = stats[node.id];
+      if (!stat?.last_practiced_at) return true;
+      const days = (now - new Date(stat.last_practiced_at).getTime()) / DAY;
+      return days > SPRINT_TEACH_COOLDOWN_DAYS || stat.last_principle !== "teach-back";
+    })
+    .sort((a, b) => b.mastery - a.mastery)[0];
+
+  const items: (SprintItem | null)[] = [
+    retrieval
       ? {
-          id: `retrieval-${weakest.id}`,
+          id: `retrieval-${retrieval.id}`,
           principle: "retrieval",
-          title: weakest.title,
-          topicId: weakest.id,
-          prompt: weakest.revision_prompt,
-          why: "Lowest mastery topic. Ask before showing notes to force recall.",
+          title: retrieval.title,
+          topicId: retrieval.id,
+          prompt: retrieval.revision_prompt,
+          why: `${Math.round((1 - retrieval.mastery) * 100)}% mastery gap — recall before reading notes.`,
         }
       : null,
-    prerequisiteEdge?.source && prerequisiteEdge.target
+    prereq
       ? {
-          id: `prerequisite-${prerequisiteEdge.edge.id}`,
+          id: `prerequisite-${prereq.edge.id}`,
           principle: "prerequisite",
-          title: `${prerequisiteEdge.source.title} -> ${prerequisiteEdge.target.title}`,
-          topicId: prerequisiteEdge.source.id,
-          prompt: `Explain why ${prerequisiteEdge.source.title} has to be stable before ${prerequisiteEdge.target.title}.`,
-          why: prerequisiteEdge.edge.evidence,
+          title: `${prereq.source.title} → ${prereq.target.title}`,
+          topicId: prereq.source.id,
+          prompt: `Explain why ${prereq.source.title} has to be stable before ${prereq.target.title}.`,
+          why: prereq.edge.evidence,
         }
       : null,
-    interleaved
+    interleave
       ? {
-          id: `interleave-${interleaved.id}`,
+          id: `interleave-${interleave.id}`,
           principle: "interleaving",
-          title: interleaved.title,
-          topicId: interleaved.id,
-          prompt: `Switch topics: answer this without rereading first. ${interleaved.revision_prompt}`,
-          why: "Changing clusters prevents the session from becoming one-topic blocked practice.",
+          title: interleave.title,
+          topicId: interleave.id,
+          prompt: `Different cluster — answer without rereading. ${interleave.revision_prompt}`,
+          why: "Cluster switch breaks blocked practice and builds transfer.",
         }
       : null,
-  ].filter((item): item is SprintItem => item !== null);
+    teachable
+      ? {
+          id: `teach-${teachable.id}`,
+          principle: "teach-back",
+          title: teachable.title,
+          topicId: teachable.id,
+          prompt: `Teach ${teachable.title} aloud to a peer. Use one example and one analogy.`,
+          why: `${Math.round(teachable.mastery * 100)}% mastery — teach-back locks it in.`,
+        }
+      : null,
+  ];
+
+  return items.filter((item): item is SprintItem => item !== null);
 }
 
 function reviewHref(topic: KnowledgeGraphNode) {
@@ -853,13 +1093,22 @@ function reviewHref(topic: KnowledgeGraphNode) {
   return `/dashboard/chat?${params.toString()}`;
 }
 
-function TopicNode({ topic, selected }: { topic: KnowledgeGraphNode; selected: boolean }) {
+function TopicNode({
+  topic,
+  selected,
+  pulsing,
+}: {
+  topic: KnowledgeGraphNode;
+  selected: boolean;
+  pulsing: boolean;
+}) {
   const palette = paletteForCluster(topic.cluster);
   return (
     <div
       className={cn(
         "rounded-lg border-2 p-3 shadow-sm",
         selected && "ring-ring ring-2 ring-offset-2",
+        pulsing && "kg-pulse",
       )}
       style={{
         borderColor: palette.border,

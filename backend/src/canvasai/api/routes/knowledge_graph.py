@@ -13,8 +13,11 @@ from canvasai.schemas import (
     KnowledgeGraphManualFactsRequest,
     KnowledgeGraphMergeRequest,
     KnowledgeGraphPayload,
+    KnowledgeGraphPracticeRequest,
+    KnowledgeGraphPracticeResponse,
     KnowledgeGraphProposal,
     KnowledgeGraphProposeRequest,
+    KnowledgeGraphTopicStat,
 )
 from canvasai.storage import knowledge_graph as kg_store
 
@@ -24,6 +27,46 @@ router = APIRouter(prefix="/knowledge-graph", tags=["knowledge-graph"])
 @router.get("/current", response_model=KnowledgeGraphPayload)
 async def current_graph(user_id: str = Depends(get_current_user_id)) -> KnowledgeGraphPayload:
     return kg_store.get_current_graph(user_id)
+
+
+@router.get("/stats", response_model=dict[str, KnowledgeGraphTopicStat])
+async def topic_stats(user_id: str = Depends(get_current_user_id)) -> dict[str, KnowledgeGraphTopicStat]:
+    """Per-node practice stats. Drives the study sprint's stale-topic logic."""
+    raw = kg_store.get_topic_stats_payload(user_id)
+    return {node_id: KnowledgeGraphTopicStat.model_validate(stat) for node_id, stat in raw.items()}
+
+
+@router.post("/practice", response_model=KnowledgeGraphPracticeResponse)
+async def record_practice(
+    payload: KnowledgeGraphPracticeRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> KnowledgeGraphPracticeResponse:
+    """Record that the user completed a sprint item on this node.
+
+    Bumps practice_count + last_practiced_at, recomputes mastery + confidence
+    using the current graph, and live-patches the latest version's kg_nodes
+    row so the UI shows the bump immediately.
+    """
+    stats = kg_store.record_practice(user_id, payload.node_id, payload.principle)
+    scores = kg_store.compute_node_scores_now(
+        user_id=user_id, node_id=payload.node_id, stats=stats
+    )
+    if scores is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Node not found in the current graph version.",
+        )
+    mastery, confidence = scores
+    kg_store.update_node_scores(
+        user_id, payload.node_id, mastery=mastery, confidence=confidence
+    )
+    return KnowledgeGraphPracticeResponse(
+        node_id=payload.node_id,
+        mastery=mastery,
+        confidence=confidence,
+        practice_count=stats.practice_count,
+        last_practiced_at=stats.last_practiced_at,
+    )
 
 
 @router.post("/from-session/{session_id}", response_model=KnowledgeGraphExportResponse)

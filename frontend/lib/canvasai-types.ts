@@ -199,3 +199,26 @@ export type KnowledgeGraphProposal = {
   proposed_edges: KnowledgeGraphProposalEdge[];
   existing_node_titles: string[];
 };
+
+export type KnowledgeGraphPracticePrinciple =
+  | "retrieval"
+  | "prerequisite"
+  | "interleaving"
+  | "teach-back";
+
+export type KnowledgeGraphTopicStat = {
+  practice_count: number;
+  last_practiced_at: string | null;
+  last_principle: KnowledgeGraphPracticePrinciple | null;
+  first_seen_at: string | null;
+};
+
+export type KnowledgeGraphTopicStats = Record<string, KnowledgeGraphTopicStat>;
+
+export type KnowledgeGraphPracticeResponse = {
+  node_id: string;
+  mastery: number;
+  confidence: number;
+  practice_count: number;
+  last_practiced_at: string;
+};
