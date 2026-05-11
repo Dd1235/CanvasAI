@@ -21,7 +21,7 @@ class ContextSynthesizer(AgentBase):
         
         user_input = f"USER_INTENT: {intent}\n\nEXTERNAL_DOCS: {docs}"
         
-        facts = await self.llm.complete(system=self.system_prompt, user=user_input, model="gemini-2.5-flash-lite")
+        facts = await self.llm.complete(system=self.system_prompt, user=user_input, model="gpt-4o-mini")
         return {
             "retrieved_facts": facts,
             "trace": self._trace(state, "Synthesized research using fallback hierarchy"),

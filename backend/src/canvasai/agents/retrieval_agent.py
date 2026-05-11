@@ -16,7 +16,8 @@ class RetrievalAgent(AgentBase):
         
         user_input = f"HISTORY:\n{history_str}\n\nLATEST PROMPT: {prompt}"
         
-        intent = await self.llm.complete(system=self.system_prompt, user=user_input, model="gemini-2.5-flash-lite")
+        # UPGRADED TO GPT-4o-MINI
+        intent = await self.llm.complete(system=self.system_prompt, user=user_input, model="gpt-4o-mini")
         return {
             "intent_statement": intent,
             "trace": self._trace(state, "Analyzed user intent and context"),
