@@ -998,22 +998,42 @@ function buildStudySprint(
 
   const retrieval = byPriority[0]?.node;
 
+  // Prereq score = gap * stalenessBoost(source). The boost mirrors the one
+  // used for Retrieval, so marking the source practiced drops this edge to
+  // ~0 score and lets another prereq surface. Without it, the biggest-gap
+  // edge keeps winning even after several reps. We also drop:
+  //   - edges with non-positive gap (prereq is already stronger than dependent)
+  //   - edges whose source already holds the Retrieval slot (no duplication)
   const prereq = graph.edges
     .filter((edge) => edge.relation === "prerequisite")
-    .map((edge) => ({
-      edge,
-      source: graph.nodes.find((node) => node.id === edge.source),
-      target: graph.nodes.find((node) => node.id === edge.target),
-    }))
+    .map((edge) => {
+      const source = graph.nodes.find((node) => node.id === edge.source);
+      const target = graph.nodes.find((node) => node.id === edge.target);
+      if (!source || !target) return null;
+      if (source.id === retrieval?.id) return null;
+      const gap = target.mastery - source.mastery;
+      if (gap <= 0) return null;
+      const stat = stats[source.id];
+      const daysSince = stat?.last_practiced_at
+        ? (now - new Date(stat.last_practiced_at).getTime()) / DAY
+        : Number.POSITIVE_INFINITY;
+      const stalenessBoost =
+        daysSince < SPRINT_RECENCY_PENALTY_DAYS
+          ? daysSince / SPRINT_RECENCY_PENALTY_DAYS
+          : 1;
+      return { edge, source, target, score: gap * stalenessBoost };
+    })
     .filter(
-      (item): item is { edge: KnowledgeGraphEdge; source: KnowledgeGraphNode; target: KnowledgeGraphNode } =>
-        Boolean(item.source && item.target),
+      (
+        item,
+      ): item is {
+        edge: KnowledgeGraphEdge;
+        source: KnowledgeGraphNode;
+        target: KnowledgeGraphNode;
+        score: number;
+      } => item !== null,
     )
-    .sort((a, b) => {
-      const gapA = a.target.mastery - a.source.mastery;
-      const gapB = b.target.mastery - b.source.mastery;
-      return gapB - gapA;
-    })[0];
+    .sort((a, b) => b.score - a.score)[0];
 
   const interleave = byPriority.find(
     (entry) =>

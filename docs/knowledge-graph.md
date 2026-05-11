@@ -223,12 +223,84 @@ sequenceDiagram
   Note over API,DB: same merge phase as canvas bundle
 ```
 
+## Mastery & confidence
+
+Implemented in [`knowledge_graph/mastery.py`](../backend/src/canvasai/knowledge_graph/mastery.py).
+Both fields are recomputed at the end of every merge, using KG-only signals
+(no flashcard / chat coupling), and written into `kg_nodes` before
+persistence. They are also recomputed on each `POST /knowledge-graph/practice`
+call so the UI sees the bump immediately.
+
+```
+mastery    = 0.5 · practice + 0.3 · coverage + 0.2 · recency
+confidence = 0.5 · edge_density + 0.5 · evidence_density
+```
+
+| Term               | Definition                                                                 |
+| ------------------ | -------------------------------------------------------------------------- |
+| `practice`         | `min(1, practice_count / 4)` — four marked-practiced events = saturated.   |
+| `coverage`         | `min(1, len(unique source_session_ids) / 3)` — appeared in 3+ exports.     |
+| `recency`          | `2^(-days_since_last_practice / 10)` — halves every 10 days; 0 if never.   |
+| `edge_density`     | `min(1, edges_touching_node / 4)` — well-connected nodes are more trusted. |
+| `evidence_density` | `min(1, len(evidence) / 3)` — how many sources back this node.             |
+
+Per-node practice signal lives in `kg_topic_stats(user_id, node_id)` and
+survives across `kg_versions` rebuilds (the canonicalized `node_id` is
+stable because merge reuses ids via alias matching).
+
+## Study Sprint
+
+Implemented in
+[`knowledge-graph-board.tsx::buildStudySprint`](../frontend/components/knowledge/knowledge-graph-board.tsx).
+Pure frontend — runs against the latest `KnowledgeGraphPayload` plus
+`KnowledgeGraphTopicStats` fetched from `GET /knowledge-graph/stats`.
+
+For every node, compute a **priority score**:
+
+```
+need        = (1 - mastery) · 0.6 + (1 - confidence) · 0.4
+staleness   = daysSinceLastPractice < 1
+                ? daysSinceLastPractice / 1     // 0 right after practice, scales up
+                : 1
+priority    = need · staleness
+```
+
+Then fill four sprint slots with grounded learning-science choices:
+
+| Slot | Principle      | Pick                                                                  | Rationale                                                |
+| ---- | -------------- | --------------------------------------------------------------------- | -------------------------------------------------------- |
+| 1    | Retrieval      | Highest `priority`                                                                | Force recall on the topic that needs it most.            |
+| 2    | Prerequisite   | Edge with largest `gap · staleness(source)`, where `gap = target.mastery - source.mastery > 0` and source ≠ Retrieval pick | Repair the foundation; once practiced, the same edge drops to ~0 score so other prereqs surface. |
+| 3    | Interleaving   | High-priority node in a *different cluster* than slot 1                           | Cluster switch breaks blocked practice, builds transfer. |
+| 4    | Teach-back     | `mastery ≥ 0.7` node not taught back in the last 7 days                           | Feynman-style explanation consolidates strong topics.    |
+
+**Rotation guarantee.** The `staleness` multiplier makes a freshly-practiced
+node's priority drop to 0 immediately and ramp linearly back to full over
+24 hours — so the next time you open the sprint, the item you just marked
+practiced is automatically deprioritized. (Tunables live at the top of
+`knowledge-graph-board.tsx`: `SPRINT_RECENCY_PENALTY_DAYS`,
+`SPRINT_TEACHBACK_THRESHOLD`, `SPRINT_TEACH_COOLDOWN_DAYS`.)
+
+Sprint actions:
+- **Open topic** — selects the node, opens the revision drawer.
+- **Mark practiced** — calls `POST /knowledge-graph/practice {node_id, principle}`.
+  Backend bumps `practice_count`, sets `last_practiced_at`, recomputes
+  `mastery` + `confidence` via the formula above, and patches the latest
+  `kg_nodes` row. Frontend pulses the node green for ~1.5s and updates the
+  local graph in place.
+
 ## Local dev
 
 ```bash
 ./scripts/run_knowledge_graph_dev.sh   # boots backend + Inngest dev + frontend
 ./scripts/stop_knowledge_graph_dev.sh  # tears them down
 ```
+
+**`./run.sh` does NOT boot Inngest.** Any endpoint that enqueues an Inngest
+event (`/from-session`, `/from-facts`, `/from-text`, `/merge`) will return
+502 because the worker can't be reached. Use `run_knowledge_graph_dev.sh`
+for those flows. The sync endpoints (`/current`, `/extract`, `/stats`,
+`/practice`) work with either script.
 
 Inngest dev server: http://localhost:8288 (event log, function runs, retries).
 Frontend KG board: http://localhost:3000/dashboard/knowledge.
