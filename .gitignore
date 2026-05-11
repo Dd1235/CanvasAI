@@ -23,6 +23,8 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+.run*.pids
+.c*
 
 # os / editors
 .DS_Store

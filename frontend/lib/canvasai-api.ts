@@ -7,6 +7,12 @@ import type {
   ChatMessage,
   ChatSessionSummary,
   KnowledgeGraphPayload,
+  KnowledgeGraphPracticePrinciple,
+  KnowledgeGraphPracticeResponse,
+  KnowledgeGraphProposal,
+  KnowledgeGraphProposalEdge,
+  KnowledgeGraphProposalNode,
+  KnowledgeGraphTopicStats,
   SessionSummary,
   SessionTurn,
   VisualizationTool,
@@ -142,6 +148,20 @@ export async function getKnowledgeGraph() {
   return request<KnowledgeGraphPayload>(KNOWLEDGE_GRAPH_ENDPOINT);
 }
 
+export async function getKnowledgeGraphTopicStats() {
+  return request<KnowledgeGraphTopicStats>("/knowledge-graph/stats");
+}
+
+export async function recordKnowledgeGraphPractice(
+  node_id: string,
+  principle: KnowledgeGraphPracticePrinciple,
+) {
+  return request<KnowledgeGraphPracticeResponse>("/knowledge-graph/practice", {
+    method: "POST",
+    body: { node_id, principle },
+  });
+}
+
 export async function exportSessionToKnowledgeGraph({
   sessionId,
   prompt,
@@ -153,11 +173,62 @@ export async function exportSessionToKnowledgeGraph({
   nodes: CanvasNode[];
   edges: CanvasEdge[];
 }) {
-  return request<{ graph_id: string; queued: boolean; message: string }>(
+  return request<{ graph_id: string; build_id?: string; queued: boolean; message: string }>(
     `${KNOWLEDGE_GRAPH_EXPORT_ENDPOINT}/${sessionId}`,
     {
       method: "POST",
       body: { prompt, nodes, edges },
+    },
+  );
+}
+
+export async function addTextToKnowledgeGraph({
+  title,
+  text,
+}: {
+  title?: string;
+  text: string;
+}) {
+  return request<{ graph_id: string; build_id?: string; queued: boolean; message: string }>(
+    "/knowledge-graph/from-text",
+    {
+      method: "POST",
+      body: { title, text },
+    },
+  );
+}
+
+export async function proposeKnowledgeGraphFromText({
+  title,
+  text,
+}: {
+  title?: string;
+  text: string;
+}) {
+  return request<KnowledgeGraphProposal>("/knowledge-graph/extract", {
+    method: "POST",
+    body: { title, text },
+  });
+}
+
+export async function mergeKnowledgeGraphProposal({
+  source_id,
+  title,
+  text,
+  proposed_nodes,
+  proposed_edges,
+}: {
+  source_id: string;
+  title?: string | null;
+  text?: string | null;
+  proposed_nodes: KnowledgeGraphProposalNode[];
+  proposed_edges: KnowledgeGraphProposalEdge[];
+}) {
+  return request<{ graph_id: string; build_id?: string; queued: boolean; message: string }>(
+    "/knowledge-graph/merge",
+    {
+      method: "POST",
+      body: { source_id, title, text, proposed_nodes, proposed_edges },
     },
   );
 }

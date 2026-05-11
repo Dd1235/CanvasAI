@@ -11,6 +11,7 @@ export type CanvasEdge = Edge;
 export type CanvasPayload = {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
+  ai_response: string;
 };
 
 export type AgentTrace = {
@@ -33,6 +34,7 @@ export type SessionTurn = {
   payload: CanvasPayload;
   turn_index: number;
   created_at: string;
+  is_checkpoint?: boolean;
 };
 
 export type SessionSummary = {
@@ -124,7 +126,7 @@ export type KnowledgeGraphNode = {
   revision_prompt: string;
   mastery: number;
   confidence: number;
-  cluster: "data-structures" | "memory-model" | "algorithms" | "systems" | "frontend";
+  cluster: string;
   tags: string[];
   evidence: string[];
   source_session_ids: string[];
@@ -165,4 +167,59 @@ export type KnowledgeGraphPayload = {
   nodes: KnowledgeGraphNode[];
   edges: KnowledgeGraphEdge[];
   update_plan: KnowledgeGraphUpdatePlan;
+};
+
+export type KnowledgeGraphProposalNode = {
+  title: string;
+  summary: string;
+  revision_prompt: string;
+  aliases: string[];
+  tags: string[];
+  cluster: string;
+  confidence: number;
+  evidence: string[];
+  matched_existing_id: string | null;
+  matched_existing_title: string | null;
+  is_new: boolean;
+};
+
+export type KnowledgeGraphProposalEdge = {
+  source_title: string;
+  target_title: string;
+  relation: KnowledgeGraphEdge["relation"];
+  strength: number;
+  confidence: number;
+  evidence: string;
+};
+
+export type KnowledgeGraphProposal = {
+  source_id: string;
+  title: string | null;
+  text: string | null;
+  proposed_nodes: KnowledgeGraphProposalNode[];
+  proposed_edges: KnowledgeGraphProposalEdge[];
+  existing_node_titles: string[];
+};
+
+export type KnowledgeGraphPracticePrinciple =
+  | "retrieval"
+  | "prerequisite"
+  | "interleaving"
+  | "teach-back";
+
+export type KnowledgeGraphTopicStat = {
+  practice_count: number;
+  last_practiced_at: string | null;
+  last_principle: KnowledgeGraphPracticePrinciple | null;
+  first_seen_at: string | null;
+};
+
+export type KnowledgeGraphTopicStats = Record<string, KnowledgeGraphTopicStat>;
+
+export type KnowledgeGraphPracticeResponse = {
+  node_id: string;
+  mastery: number;
+  confidence: number;
+  practice_count: number;
+  last_practiced_at: string;
 };

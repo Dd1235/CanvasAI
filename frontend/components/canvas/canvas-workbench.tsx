@@ -62,6 +62,7 @@ import type {
   CanvasNode,
   DemoDocument,
   DemoTurn,
+  SessionTurn,
 } from "@/lib/canvasai-types";
 import { cn } from "@/lib/utils";
 import { MemoryBlock } from "./nodes/MemoryBlock";
@@ -153,14 +154,14 @@ export function CanvasWorkbench({
       .then(({ turns: historyTurns }) => {
         if (!historyTurns.length) return;
         const latest = historyTurns[historyTurns.length - 1];
-        const frames = historyTurns.map((turn: any) => ({
+        const frames = historyTurns.map((turn: SessionTurn) => ({
           index: turn.turn_index,
           prompt: turn.prompt,
           // Extract the ai_response from the payload, fallback if missing
           summary: turn.payload?.ai_response || "Canvas updated.",
           nodes: turn.payload.nodes.length,
           edges: turn.payload.edges.length,
-          is_checkpoint: turn.is_checkpoint,
+          is_checkpoint: turn.is_checkpoint ?? false,
           payload: turn.payload,
         }));
         setNodes(latest.payload.nodes);
