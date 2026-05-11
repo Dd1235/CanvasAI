@@ -64,6 +64,10 @@ import type {
   DemoTurn,
 } from "@/lib/canvasai-types";
 import { cn } from "@/lib/utils";
+import { MemoryBlock } from "./nodes/MemoryBlock";
+import { LogicGateNode } from "./nodes/LogicGateNode";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Props = {
   sessionId: string;
@@ -87,6 +91,11 @@ type BackendFrame = BackendStatusFrame | BackendPayloadFrame | { type: "error"; 
 type DeckFrame = DemoTurn & {
   is_checkpoint: boolean;
   payload: { nodes: CanvasNode[]; edges: CanvasEdge[]; };
+};
+
+const nodeTypes = {
+  memory_block: MemoryBlock,
+  logic_gate: LogicGateNode,
 };
 
 export function CanvasWorkbench({
@@ -351,7 +360,7 @@ export function CanvasWorkbench({
       {/* Canvas Area */}
       <section className="bg-card border-border min-h-[28rem] overflow-hidden rounded-lg border">
         <ReactFlowProvider>
-          <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} fitView fitViewOptions={{ padding: 0.25 }} defaultEdgeOptions={{ type: "smoothstep" }} proOptions={{ hideAttribution: true }}>
+          <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} fitView fitViewOptions={{ padding: 0.25 }} defaultEdgeOptions={{ type: "smoothstep" }} proOptions={{ hideAttribution: true }}>
             <Background gap={24} />
             <Controls position="bottom-left" />
             <MiniMap pannable zoomable position="bottom-right" />
@@ -414,7 +423,11 @@ export function CanvasWorkbench({
                     <div className="bg-secondary flex size-8 shrink-0 items-center justify-center rounded-full"><Bot className="size-4" /></div>
                     <div className="bg-muted text-foreground rounded-2xl rounded-tl-none px-4 py-2 text-sm border border-border">
                       <p className="font-medium text-xs text-muted-foreground mb-1">Canvas Updated</p>
-                      {frame.summary}
+                      <div className="prose prose-invert prose-sm max-w-none prose-p:leading-snug prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {frame.summary}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   </div>
                 </div>

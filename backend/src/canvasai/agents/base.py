@@ -1,9 +1,4 @@
-"""Base class for CanvasAI agents.
-
-Each agent is a callable taking the LangGraph state and returning a state
-delta (dict). Agents are intentionally thin — domain logic lives in the
-agent's prompt + LLM provider, not the class.
-"""
+"""Base class for CanvasAI agents."""
 
 from __future__ import annotations
 
@@ -12,13 +7,31 @@ from typing import Any
 
 from canvasai.llm.provider import LLMProvider, get_provider
 
+# --- CENTRAL ROUTING CONFIGURATION ---
+# Change this SINGLE variable to switch engines across all 4 agents instantly.
+ACTIVE_ENGINE = "gemini"  # Options: "openai" or "gemini"
+
+MODEL_REGISTRY = {
+    "gemini": {
+        "fast": "gemini-2.5-flash-lite",
+        "heavy": "gemini-2.5-flash"
+    },
+    "openai": {
+        "fast": "gpt-4o-mini",
+        "heavy": "gpt-4o"
+    }
+}
 
 class AgentBase(ABC):
     role: str
     system_prompt: str
+    # Agents declare their intelligence requirement here
+    model_tier: str = "fast" 
 
     def __init__(self, llm: LLMProvider | None = None) -> None:
         self.llm = llm or get_provider()
+        # Dynamically grabs the correct model string based on the active engine!
+        self.model_name = MODEL_REGISTRY[ACTIVE_ENGINE][self.model_tier]
 
     @abstractmethod
     async def __call__(self, state: dict[str, Any]) -> dict[str, Any]:

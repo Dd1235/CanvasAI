@@ -5,6 +5,7 @@ from canvasai.schemas import CanvasPayload
 
 class SchemaEnforcer(AgentBase):
     role = "agent_3_enforcer"
+    model_tier = "heavy"
     system_prompt = (
         "You are a React Flow Schema Compiler. Generate the JSON payload strictly following the Visual Script.\n\n"
         "SCHEMA & PERSISTENCE RULES:\n"
@@ -13,10 +14,11 @@ class SchemaEnforcer(AgentBase):
         "3. ALLOWED EDGE TYPES ONLY: Edge 'type' MUST ONLY be 'default', 'straight', 'step', or 'smoothstep'. NEVER use custom words like 'Triggers'. Use the edge 'label' for that.\n"
         "4. STRICT SCHEMA: Output only valid JSON matching the exact required schema.\n\n"
         "SPATIAL & LAYOUT RULES (CLEAN CANVAS MANDATE):\n"
-        "5. VIRTUAL GRID: Use a 300x300 unit grid. No two nodes should ever overlap or have the exact same (x, y).\n"
-        "6. FLOW DIRECTION: Place 'Input' or 'Start' nodes on the left (x=0). Move right (x+=300) for sequential steps. Use Y-axis (y+=250) for parallel components.\n"
-        "7. BREATHING ROOM: Ensure each node has at least 200 units of clear space around it.\n"
-        "8. BOUNDING BOXES: If describing a 'Container' or 'Group', ensure all child nodes have coordinates logically contained within that group's area."
+        "5. WIDE CUSTOM NODES: Pay attention to 'type'. Custom nodes like 'memory_block', 'logic_gate', and 'code_stepper' are WIDE (approx 250px-350px).\n"
+        "6. GRID SPACING: To prevent overlapping, space nodes horizontally by AT LEAST X += 350 units, and vertically by Y += 150 units.\n"
+        "7. FLOW DIRECTION: Place 'Input' or 'Start' nodes on the left (X=0). Move right (X+=350) for sequence. Stack related items (like arrays of memory blocks) vertically (Y+=150).\n"
+        "8. NO COLLISION: No two nodes should ever have the exact same (x, y) coordinates."
+        "9. BOUNDING BOXES: If describing a 'Container' or 'Group', ensure all child nodes have coordinates logically contained within that group's area."
     )
 
     async def __call__(self, state: dict[str, Any]) -> dict[str, Any]:
@@ -33,7 +35,7 @@ class SchemaEnforcer(AgentBase):
             model_schema=CanvasPayload,
             system=self.system_prompt,
             user=user_input,
-            model="gemini-2.5-flash-lite"
+            model=self.model_name
         )
 
         return {

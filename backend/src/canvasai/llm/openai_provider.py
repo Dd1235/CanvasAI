@@ -5,6 +5,10 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from canvasai.config import get_settings
 
+from typing import TypeVar, Type
+from pydantic import BaseModel
+T = TypeVar("T", bound=BaseModel)
+
 logger = logging.getLogger(__name__)
 
 class OpenAIProvider:
