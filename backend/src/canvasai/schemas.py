@@ -164,3 +164,153 @@ class ActiveRecallStats(BaseModel):
     total_cards: int
     due_cards: int
     sessions: int
+
+
+KnowledgeGraphRelation = Literal["prerequisite", "extends", "analogous", "contrasts", "debugs"]
+KnowledgeGraphTrigger = Literal["session_export", "nightly_rebuild", "manual_refresh"]
+KnowledgeGraphPracticePrinciple = Literal[
+    "retrieval", "prerequisite", "interleaving", "teach-back"
+]
+
+
+class KnowledgeGraphSourceSummary(BaseModel):
+    sessions: int = 0
+    documents: int = 0
+    cards: int = 0
+
+
+class KnowledgeGraphNode(BaseModel):
+    id: str
+    title: str
+    summary: str
+    revision_prompt: str
+    mastery: float = Field(ge=0, le=1)
+    confidence: float = Field(ge=0, le=1)
+    cluster: str
+    tags: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+    source_session_ids: list[str] = Field(default_factory=list)
+    position: CanvasPosition
+
+
+class KnowledgeGraphEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    relation: KnowledgeGraphRelation
+    strength: float = Field(ge=0, le=1)
+    evidence: str
+    source_session_ids: list[str] = Field(default_factory=list)
+
+
+class KnowledgeGraphUpdatePlan(BaseModel):
+    trigger: KnowledgeGraphTrigger
+    read_endpoint: str
+    write_endpoint: str
+    algorithm: str
+    notes: list[str] = Field(default_factory=list)
+
+
+class KnowledgeGraphPayload(BaseModel):
+    graph_id: str
+    user_id: str
+    version: int
+    generated_at: datetime
+    source_summary: KnowledgeGraphSourceSummary
+    nodes: list[KnowledgeGraphNode]
+    edges: list[KnowledgeGraphEdge]
+    update_plan: KnowledgeGraphUpdatePlan
+
+
+class KnowledgeGraphExportRequest(BaseModel):
+    prompt: str | None = None
+    nodes: list[CanvasNode] = Field(default_factory=list)
+    edges: list[CanvasEdge] = Field(default_factory=list)
+    facts: Any | None = None
+
+
+class KnowledgeGraphManualFactsRequest(BaseModel):
+    title: str | None = None
+    text: str = Field(min_length=1)
+
+
+class KnowledgeGraphCanvasFact(BaseModel):
+    title: str = Field(min_length=1)
+    description: str = ""
+
+
+class KnowledgeGraphCanvasFactsRequest(BaseModel):
+    session_id: str | None = None
+    facts: list[KnowledgeGraphCanvasFact] = Field(min_length=1)
+
+
+class KnowledgeGraphExportResponse(BaseModel):
+    graph_id: str
+    build_id: str
+    queued: bool
+    message: str
+
+
+class KnowledgeGraphProposalNode(BaseModel):
+    title: str
+    summary: str = ""
+    revision_prompt: str = ""
+    aliases: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    cluster: str = "general"
+    confidence: float = Field(default=0.65, ge=0, le=1)
+    evidence: list[str] = Field(default_factory=list)
+    matched_existing_id: str | None = None
+    matched_existing_title: str | None = None
+    is_new: bool = True
+
+
+class KnowledgeGraphProposalEdge(BaseModel):
+    source_title: str
+    target_title: str
+    relation: KnowledgeGraphRelation = "extends"
+    strength: float = Field(default=0.55, ge=0, le=1)
+    confidence: float = Field(default=0.65, ge=0, le=1)
+    evidence: str = ""
+
+
+class KnowledgeGraphProposal(BaseModel):
+    source_id: str
+    title: str | None = None
+    text: str | None = None
+    proposed_nodes: list[KnowledgeGraphProposalNode]
+    proposed_edges: list[KnowledgeGraphProposalEdge]
+    existing_node_titles: list[str] = Field(default_factory=list)
+
+
+class KnowledgeGraphProposeRequest(BaseModel):
+    title: str | None = None
+    text: str = Field(min_length=1)
+
+
+class KnowledgeGraphMergeRequest(BaseModel):
+    source_id: str
+    title: str | None = None
+    text: str | None = None
+    proposed_nodes: list[KnowledgeGraphProposalNode]
+    proposed_edges: list[KnowledgeGraphProposalEdge]
+
+
+class KnowledgeGraphTopicStat(BaseModel):
+    practice_count: int = 0
+    last_practiced_at: datetime | None = None
+    last_principle: KnowledgeGraphPracticePrinciple | None = None
+    first_seen_at: datetime | None = None
+
+
+class KnowledgeGraphPracticeRequest(BaseModel):
+    node_id: str = Field(min_length=1)
+    principle: KnowledgeGraphPracticePrinciple = "retrieval"
+
+
+class KnowledgeGraphPracticeResponse(BaseModel):
+    node_id: str
+    mastery: float = Field(ge=0, le=1)
+    confidence: float = Field(ge=0, le=1)
+    practice_count: int
+    last_practiced_at: datetime

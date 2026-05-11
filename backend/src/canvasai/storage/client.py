@@ -22,3 +22,22 @@ def get_supabase() -> Client:
         )
         
     return create_client(s.supabase_url, s.supabase_anon_key)
+
+
+@lru_cache(maxsize=1)
+def get_supabase_admin() -> Client:
+    """
+    Initializes a singleton Supabase client using the service-role key.
+
+    Background jobs run outside a user JWT context, so they need a server-side
+    client that can write owner-scoped rows while RLS remains enabled for users.
+    """
+    s = get_settings()
+
+    if not s.supabase_url or not s.supabase_service_role_key:
+        raise ValueError(
+            "Admin database integration requires SUPABASE_URL and "
+            "SUPABASE_SERVICE_ROLE_KEY in your .env file."
+        )
+
+    return create_client(s.supabase_url, s.supabase_service_role_key)

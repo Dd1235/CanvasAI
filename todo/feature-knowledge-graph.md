@@ -5,18 +5,20 @@ The deep design notes (algorithm choices, Neo4j vs Postgres, references) are in 
 ## What works ✅
 
 - Page at [`/dashboard/knowledge`](../frontend/app/dashboard/knowledge/page.tsx) using [`knowledge-graph-board.tsx`](../frontend/components/knowledge/knowledge-graph-board.tsx).
-- Mock graph payload with topics, edges, evidence, mastery, confidence, clusters in [`mock-knowledge-graph.ts`](../frontend/lib/mock-knowledge-graph.ts).
+- Mock graph payload with topics, edges, evidence, mastery, confidence, clusters in [`mock-knowledge-graph.ts`](../frontend/lib/mock-knowledge-graph.ts) — used only as a fallback when `/current` fails.
 - Left revision drawer: clicking a topic opens summary, revision prompt, tags, evidence, connected relationships.
-- Adaptive Study Sprint modal: turns the graph into three actions (retrieval practice on weakest topic, prerequisite repair, interleaving with another cluster).
-- Frontend API seam: [`getKnowledgeGraph()`](../frontend/lib/canvasai-api.ts) calls `GET /knowledge-graph/current` and falls back to the mock when the call fails.
-- Canvas "Export graph" button: calls `POST /knowledge-graph/from-session/{id}` and toasts the response (or "endpoint not wired" if missing).
+- **Mastery is signal-grounded**, not LLM-guessed. Formula in [`mastery.py`](../backend/src/canvasai/knowledge_graph/mastery.py); applied in [`pipeline.py`](../backend/src/canvasai/knowledge_graph/pipeline.py) at the end of every merge, and recomputed on each practice event.
+- **Adaptive Study Sprint** modal: four-slot algorithm (retrieval, prerequisite repair, interleaving, teach-back). Priority is `(1-mastery)·0.6 + (1-confidence)·0.4`, multiplied by a 1-day staleness penalty that demotes anything just practiced. See [`knowledge-graph.md`](../docs/knowledge-graph.md#study-sprint) for details.
+- **"Mark practiced" loop**: `POST /knowledge-graph/practice` bumps `practice_count` in `kg_topic_stats`, recomputes mastery/confidence, live-patches `kg_nodes`, and the frontend pulses the node green.
+- **Realtime updates**: frontend subscribes to `kg_versions` inserts via Supabase Realtime; newly-arrived nodes pulse on entry (15s poll kept as a safety net).
+- Frontend API seam: [`getKnowledgeGraph()`](../frontend/lib/canvasai-api.ts), `getKnowledgeGraphTopicStats()`, `recordKnowledgeGraphPractice()`.
+- Canvas "Export graph" button: calls `POST /knowledge-graph/from-session/{id}` and toasts the response.
 
 ## What's missing 🔴
 
-- Both backend endpoints (`GET /knowledge-graph/current`, `POST /knowledge-graph/from-session/{id}`).
-- The extractor/merger/scorer pipeline (designed in [kd.md](kd.md)).
-- Storage tables.
-- Update notifications to the frontend.
+- Evidence-click → open source (session id / recall card id / document chunk). Currently text-only.
+- Cross-feature mastery feed (active-recall reviews could also bump `practice_count`). Today only the sprint loop writes to `kg_topic_stats`.
+- Centrality / community detection on the merged graph (would feed node sizing + better cluster validation).
 
 ## Frontend contract
 
