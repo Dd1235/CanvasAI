@@ -17,11 +17,21 @@ class CanvasNodeData(BaseModel):
     address: str | None = Field(default=None, description="Hex address for memory_block (e.g., 0xFA12)")
     inputs: str | None = Field(default=None, description="Inputs for logic_gate (e.g., 'S=0, R=1')")
     outputs: str | None = Field(default=None, description="Outputs for logic_gate (e.g., 'Q=1, Q_bar=0')")
+    
+    # --- NEW: Lesson Plan Fields ---
+    steps: list[str] | None = Field(default=None, description="Array of steps for the roadmap")
+    active_step: int | None = Field(default=None, description="Index of the currently active step")
+    
+    # --- NEW: Code Stepper Fields ---
+    code: str | None = Field(default=None, description="Code snippet to trace")
+    language: str | None = Field(default=None, description="Programming language (e.g., 'cpp', 'python')")
+    frames: list[dict[str, Any]] | None = Field(default=None, description="List of execution frames with line, variables, and explanation")
+
 
 class CanvasNode(BaseModel):
     id: str
-    # STRICT LOCK: Only these 3 types are allowed now.
-    type: Literal["default", "memory_block", "logic_gate"] = "default"
+    # STRICT LOCK: Added lesson_plan and code_stepper to the allowed types
+    type: Literal["default", "memory_block", "logic_gate", "lesson_plan", "code_stepper"] = "default"
     position: CanvasPosition
     data: CanvasNodeData = Field(default_factory=CanvasNodeData)
 

@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, Optional
 from pydantic import BaseModel
 from canvasai.agents.base import AgentBase
 
@@ -7,56 +7,90 @@ from canvasai.agents.base import AgentBase
 class ArchitectOutput(BaseModel):
     ai_chat_response: str
     visual_script: str
+    advance_step: bool
 
 class PedagogicalArchitect(AgentBase):
     role = "agent_2_architect"
     model_tier = "heavy"
     
-    # The ultimate "Brainwashing" prompt
     system_prompt = (
-        "You are an expert Whiteboard Teacher and UI State Architect. You have two crucial jobs:\n\n"
-        "1. THE TEACHER (ai_chat_response):\n"
-        "Write a warm, encouraging, and highly pedagogical explanation for a beginner. "
-        "Do NOT just summarize facts; teach the concept using the 'Inside-Out' method. "
-        "Explicitly reference the visual diagram you are putting on the canvas (e.g., 'Take a look at the memory block on the board...', 'I've drawn a D-FlipFlop for you, notice how the inputs...').\n\n"
-        "2. THE ARCHITECT (visual_script):\n"
-        "Design the interactive diagram using STRICTLY our Component Library. Do NOT draw generic flowcharts when explaining low-level mechanics.\n\n"
-        "### VISUAL COMPONENT LIBRARY\n"
-        "You MUST use the following Node `type` strings. Do not invent new types.\n"
-        "- type: \"default\": For high-level concepts, standard flowchart steps, or generic labels. Uses `data.label`.\n"
-        "- type: \"memory_block\": For software/memory (RAM, variables, pointers, arrays, linked lists). Uses `data.label` (variable name), `data.address` (e.g., '0x001'), and `data.value`.\n"
-        "- type: \"logic_gate\": For hardware/circuits (Flip-flops, Boolean logic). Uses `data.label` (e.g., 'NAND'), `data.inputs` (e.g., 'A=1, B=0'), and `data.outputs` (e.g., 'Out=1').\n\n"
+        "You are an expert Whiteboard Teacher. Your goal is to guide a student through a concept "
+        "using the 'Inside-Out' method (foundation first, then abstraction).\n\n"
+        
+        "### PLANNING PHASE RULE (CRITICAL)\n"
+        "If 'is_planning' is True and no 'lesson_plan' node exists on the canvas, your priority "
+        "is to ADD the 'lesson_plan' node using the steps provided. \n\n"
+        
+        "### LESSON PLAN PROGRESSION (CRITICAL)\n"
+        "You have access to a 'lesson_plan' and the 'current_step_index'.\n"
+        "1. If the user explicitly confirms the plan (e.g., 'Looks good', 'Start'), or answers a check-in question correctly, you MUST set `advance_step` to true.\n"
+        "2. If `advance_step` is true, teach the NEXT step. If false, teach/clarify the CURRENT step.\n\n"
+
+        "### VISUAL COMPONENT LIBRARY (STRICT)\n"
+        "- type: \"default\": High-level labels. data: {label}\n"
+        "- type: \"lesson_plan\": The sidebar roadmap. data: {steps: list[str], active_step: int}\n"
+        "- type: \"memory_block\": Memory/Pointers. data: {label, address, value}\n"
+        "- type: \"logic_gate\": Hardware/Circuits. data: {label, inputs, outputs}\n"
+        "- type: \"code_stepper\": Algorithm Tracing. data: {code, language, frames}\n"
+        "   * 'frames' is a list: [{'line': int, 'explanation': str, 'variables': dict}]\n"
+        "   * Use this when the user needs to see HOW code works line-by-line.\n\n"
+
         "### STATE MUTATION RULES\n"
         "If the user asks to change a state (e.g., 'Flip the S switch to 1', 'Update the pointer to 0x8A4'), do NOT spawn new nodes. "
         "Output the EXACT SAME Node ID from the current canvas, but update its `data` fields to reflect the new state."
+
+        "### OUTPUT FORMAT\n"
+        "1. ai_chat_response: Encouraging, reference-heavy teaching referencing the visual diagram you are putting on the canvas (e.g., 'Take a look at the memory block on the board...', 'I've drawn a D-FlipFlop for you, notice how the inputs...').\n"
+        "2. visual_script: A concise description of changes (e.g., 'UPDATE node_1 value to 10', 'ADD code_stepper for bubble sort')."
+        "3. advance_step: true/false based on user readiness."
     )
 
     async def __call__(self, state: dict[str, Any]) -> dict[str, Any]:
-            intent = state.get("intent_statement", "")
-            facts = state.get("retrieved_facts", "")
-            
-            # Extract existing nodes so the AI knows exactly what IDs and types to reuse
-            current_nodes = state.get("nodes", [])
-            simplified_nodes = [
-                {"id": n.get("id"), "type": n.get("type"), "data": n.get("data")} 
-                for n in current_nodes
-            ]
-            
-            user_input = (
-                f"INTENT: {intent}\n\n"
-                f"FACTS: {facts}\n\n"
-                f"CURRENT CANVAS STATE:\n{json.dumps(simplified_nodes, indent=2)}"
-            )
-            
-            output: ArchitectOutput = await self.llm.structured_complete(
-                model_schema=ArchitectOutput,
-                system=self.system_prompt,
-                user=user_input,
-                model=self.model_name
-            )
+        intent = state.get("intent_statement", "")
+        facts = state.get("retrieved_facts", "")
+        plan = state.get("lesson_plan", [])
+        step_idx = state.get("current_step_index", 0)
+        is_planning = state.get("is_planning", False)
+        
+        # Determine the current "Mission"
+        current_mission = f"Teaching Step: {plan[step_idx]}" if plan and step_idx < len(plan) else f"Direct Query: {intent}"
+        
+        current_nodes = state.get("nodes", [])
+        simplified_nodes = [{"id": n.get("id"), "type": n.get("type"), "data": n.get("data")} for n in current_nodes]
+        
+        # We must tell the LLM that is_planning is TRUE for the Planning Rule to work
+        user_input = (
+            f"IS_PLANNING_PHASE: {is_planning}\n" # Triggers the "ADD lesson_plan" rule
+            f"CURRENT MISSION: {current_mission}\n\n"
+            f"FACTS TO TEACH: {facts}\n\n"
+            f"LESSON_PLAN_STEPS: {json.dumps(plan)}\n" # Gives Architect the data to draw the sidebar
+            f"CURRENT CANVAS STATE:\n{json.dumps(simplified_nodes, indent=2)}"
+        )
+        
+        output: ArchitectOutput = await self.llm.structured_complete(
+            model_schema=ArchitectOutput,
+            system=self.system_prompt,
+            user=user_input,
+            model=self.model_name
+        )
 
-            return {
-                "ai_response_draft": output.ai_chat_response,
-                "visual_script": output.visual_script,
-                "trace": self._trace(state, "Designed interactive component layout and drafted teacher response"),
-            }
+        # --- THE PROGRESSION LOGIC ---
+        new_step_idx = step_idx
+        if output.advance_step and plan and step_idx < len(plan) - 1:
+            new_step_idx += 1
+            
+        # We append a specific instruction to the visual script so the Enforcer
+        # knows to visually highlight the new step on the Lesson Plan sidebar!
+        final_script = output.visual_script
+        
+        # If the AI advanced the step, we force a visual update of the sidebar
+        if output.advance_step:
+            final_script += f"\nUPDATE node with type 'lesson_plan' to highlight active_step: {new_step_idx}"
+
+        return {
+            "ai_response_draft": output.ai_chat_response,
+            "visual_script": final_script,
+            "current_step_index": new_step_idx, # Mutates the LangGraph state
+            "is_planning": False, # Reset planning flag so we don't redraw the plan every turn
+            "trace": self._trace(state, f"Advanced to step {new_step_idx}" if output.advance_step else "Refined current step"),
+        }

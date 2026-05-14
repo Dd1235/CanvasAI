@@ -14,10 +14,13 @@ class GraphState(TypedDict, total=False):
     edges: list[dict[str, Any]]
     trace: Annotated[list[dict[str, Any]], merge_list]
     
+    is_planning: bool          # Flags if we are currently building/approving a plan
+    lesson_plan: list[str]     # The generated steps
+    current_step_index: int    # Which step the user is currently on
+    
     # Intermediate NEW PIPELINE VARIABLES
     intent_statement: str
-    external_docs: str  # <--- New: Holds text from uploaded PDFs, links, or text snippets
-    retrieved_facts: str
+    external_docs: str 
     retrieved_facts: str
     visual_script: str
     ai_response_draft: str

@@ -29,7 +29,8 @@ class GeminiProvider:
                 google_api_key=api_key,
                 model=target_model,
                 temperature=0.2,
-                max_retries=2
+                max_retries=2,
+                max_tokens=8192,
             )
             messages = [SystemMessage(content=system), HumanMessage(content=user)]
             response = await llm.ainvoke(messages)
@@ -48,6 +49,7 @@ class GeminiProvider:
             google_api_key=api_key,
             model=target_model,
             temperature=0, # Strict JSON mode
+            max_tokens=8192,
         ).with_structured_output(model_schema)
 
         messages = [SystemMessage(content=system), HumanMessage(content=user)]

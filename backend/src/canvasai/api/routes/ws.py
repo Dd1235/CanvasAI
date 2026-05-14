@@ -88,14 +88,32 @@ async def session_socket(ws: WebSocket, session_id: str, token: str | None = Que
                 logger.error(f"Resource fetch failed for session {session_id}: {e}")
                 external_docs = "No external documents provided."
 
-            # --- Inject chat_history into the LangGraph state ---
+            # --- Inside your while True loop in ws.py ---
+            
+            nodes_list = list(msg.get("nodes") or [])
+            
+            # --- NEW: Extract Lesson Plan State directly from the Canvas ---
+            active_plan = []
+            active_step_idx = 0
+            for node in nodes_list:
+                if node.get("type") == "lesson_plan":
+                    data = node.get("data", {})
+                    active_plan = data.get("steps", [])
+                    active_step_idx = data.get("active_step", 0)
+                    break # Found it, stop searching
+
+            # --- Inject chat_history and state into the LangGraph ---
             initial = {
                 "prompt": str(msg.get("prompt", "")),
                 "chat_history": chat_history,
-                "external_docs": external_docs, # <--- Grounding data injected here
-                "nodes": list(msg.get("nodes") or []),
+                "external_docs": external_docs,
+                "nodes": nodes_list,
                 "edges": list(msg.get("edges") or []),
                 "trace": [],
+                # --- NEW: Inject the extracted state ---
+                "lesson_plan": active_plan,
+                "current_step_index": active_step_idx,
+                "is_planning": False, # Always false on a new turn unless Planner runs
             }
 
             final_state: dict = {}
