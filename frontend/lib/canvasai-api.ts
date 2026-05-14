@@ -288,3 +288,14 @@ async function request<T>(path: string, options: RequestOptions = {}) {
 
   return (await response.json()) as T;
 }
+
+export async function uploadResource(sessionId: string, data: {
+  resource_type: 'pdf' | 'text' | 'link' | 'youtube';
+  content: string;
+  metadata?: any;
+}) {
+  return request<{ status: string; id: string }>(`/sessions/${sessionId}/resources`, {
+    method: "POST",
+    body: data,
+  });
+}

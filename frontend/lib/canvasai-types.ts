@@ -11,6 +11,7 @@ export type CanvasEdge = Edge;
 export type CanvasPayload = {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
+  ai_response: string;
 };
 
 export type AgentTrace = {

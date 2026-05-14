@@ -1,21 +1,15 @@
-"""OpenAI provider for single-shot completions.
-
-Degrades gracefully to a deterministic stub string when the API key is
-missing OR when the call fails (network error, 401, 429, 5xx, malformed
-response). This keeps the LangGraph pipeline running end-to-end during
-local demos and prevents one bad key from killing the WebSocket.
-"""
-
+"""OpenAI provider using LangChain library objects."""
 from __future__ import annotations
-
 import logging
-
-import httpx
-
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
 from canvasai.config import get_settings
 
-logger = logging.getLogger(__name__)
+from typing import TypeVar, Type
+from pydantic import BaseModel
+T = TypeVar("T", bound=BaseModel)
 
+logger = logging.getLogger(__name__)
 
 class OpenAIProvider:
     name = "openai"
@@ -23,47 +17,51 @@ class OpenAIProvider:
     def __init__(self) -> None:
         self._settings = get_settings()
 
-    def _stub(self, system: str, user: str, reason: str = "no key") -> str:
-        return (
-            f"[{self.name}/{self._settings.openai_model} stub: {reason}] "
-            f"system={system[:40]!r} user={user[:80]!r}"
-        )
-
-    async def complete(self, *, system: str, user: str) -> str:
-        if not self._settings.openai_api_key:
-            return self._stub(system, user, reason="no key")
+    async def complete(self, *, system: str, user: str, model: str | None = None) -> str:
+        api_key = self._settings.openai_api_key
+        target_model = model or self._settings.openai_model
+        
+        if not api_key:
+            return f"[Stub: No API Key] sys={system[:20]} user={user[:20]}"
 
         try:
-            async with httpx.AsyncClient(timeout=45) as client:
-                response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self._settings.openai_api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": self._settings.openai_model,
-                        "messages": [
-                            {"role": "system", "content": system},
-                            {"role": "user", "content": user},
-                        ],
-                        "temperature": 0.4,
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
-        except httpx.HTTPStatusError as exc:
-            logger.warning("openai http %s — falling back to stub", exc.response.status_code)
-            return self._stub(system, user, reason=f"http {exc.response.status_code}")
-        except httpx.HTTPError as exc:
-            logger.warning("openai network error %s — falling back to stub", exc)
-            return self._stub(system, user, reason="network error")
-        except (KeyError, ValueError) as exc:
-            logger.warning("openai malformed response %s — falling back to stub", exc)
-            return self._stub(system, user, reason="malformed response")
+            # Initialize the LangChain Chat Object
+            llm = ChatOpenAI(
+                api_key=api_key,
+                model=target_model,
+                temperature=0.2,
+                timeout=45,
+                max_retries=2
+            )
 
-        try:
-            content = data["choices"][0]["message"].get("content")
-        except (KeyError, IndexError, TypeError):
-            return self._stub(system, user, reason="empty response")
-        return content.strip() if isinstance(content, str) else ""
+            messages = [
+                SystemMessage(content=system),
+                HumanMessage(content=user),
+            ]
+
+            # LangChain handles the async call and parsing
+            response = await llm.ainvoke(messages)
+            return str(response.content).strip()
+
+        except Exception as e:
+            logger.error(f"LangChain OpenAI Error: {str(e)}")
+            return f"[Error: {type(e).__name__}] {str(system[:20])}"
+        
+    async def structured_complete(
+        self, *, model_schema: Type[T], system: str, user: str, model: str | None = None
+    ) -> T:
+        api_key = self._settings.openai_api_key
+        target_model = model or self._settings.openai_model
+        
+        llm = ChatOpenAI(
+            api_key=api_key,
+            model=target_model,
+            temperature=0, # Crucial for schema adherence
+        ).with_structured_output(model_schema)
+
+        messages = [
+            SystemMessage(content=system),
+            HumanMessage(content=user),
+        ]
+        
+        return await llm.ainvoke(messages)

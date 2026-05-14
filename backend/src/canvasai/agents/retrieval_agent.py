@@ -1,30 +1,25 @@
-"""Agent 0 — Retrieval Engine.
-
-Pulls factual context from the vector store (pgvector). Currently stubbed:
-returns an empty context list. Wire `canvasai.storage.documents.search()` in
-when pgvector is provisioned.
-"""
-
-from __future__ import annotations
-
 from typing import Any
-
 from canvasai.agents.base import AgentBase
 
-
 class RetrievalAgent(AgentBase):
-    role = "agent_0_retrieval"
+    role = "agent_0_intent"
+    model_tier = "fast"
     system_prompt = (
-        "You retrieve factual grounding context for a visual tutoring system. "
-        "Return only passages directly relevant to the user's prompt."
+        "You are an Intent Analyzer. Look at the User Prompt and the Chat History. "
+        "Figure out EXACTLY what the user wants to learn or modify.\n"
+        "RULES: If they say 'move it' or 'add to it', resolve the pronoun using history. "
+        "Output ONLY a clear, single-paragraph search query and intent statement."
     )
 
     async def __call__(self, state: dict[str, Any]) -> dict[str, Any]:
         prompt = state.get("prompt", "")
-        # Stub: no real RAG yet.
-        retrieved: list[str] = []
-        await self.llm.complete(system=self.system_prompt, user=prompt)
+        history_str = "\n".join([f"{h['role']}: {h['content']}" for h in state.get("chat_history", [])])
+        
+        user_input = f"HISTORY:\n{history_str}\n\nLATEST PROMPT: {prompt}"
+        
+        # UPGRADED TO GPT-4o-MINI
+        intent = await self.llm.complete(system=self.system_prompt, user=user_input, model=self.model_name)
         return {
-            "retrieved_context": retrieved,
-            "trace": self._trace(state, f"retrieved {len(retrieved)} chunks"),
+            "intent_statement": intent,
+            "trace": self._trace(state, "Analyzed user intent and context"),
         }

@@ -55,6 +55,7 @@ import {
   branchSessionFromTurn,
 } from "@/lib/canvasai-api";
 import { createClient } from "@/lib/supabase/client";
+import { ResourceModal } from "./ResourceModal";
 import type {
   AgentTrace,
   CanvasEdge,
@@ -64,6 +65,10 @@ import type {
   SessionTurn,
 } from "@/lib/canvasai-types";
 import { cn } from "@/lib/utils";
+import { MemoryBlock } from "./nodes/MemoryBlock";
+import { LogicGateNode } from "./nodes/LogicGateNode";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Props = {
   sessionId: string;
@@ -87,6 +92,11 @@ type BackendFrame = BackendStatusFrame | BackendPayloadFrame | { type: "error"; 
 type DeckFrame = DemoTurn & {
   is_checkpoint: boolean;
   payload: { nodes: CanvasNode[]; edges: CanvasEdge[]; };
+};
+
+const nodeTypes = {
+  memory_block: MemoryBlock,
+  logic_gate: LogicGateNode,
 };
 
 export function CanvasWorkbench({
@@ -147,7 +157,8 @@ export function CanvasWorkbench({
         const frames = historyTurns.map((turn: SessionTurn) => ({
           index: turn.turn_index,
           prompt: turn.prompt,
-          summary: "Loaded from backend session history.",
+          // Extract the ai_response from the payload, fallback if missing
+          summary: turn.payload?.ai_response || "Canvas updated.",
           nodes: turn.payload.nodes.length,
           edges: turn.payload.edges.length,
           is_checkpoint: turn.is_checkpoint ?? false,
@@ -250,7 +261,7 @@ export function CanvasWorkbench({
     try {
       await new Promise<void>((resolve, reject) => {
         const socket = new WebSocket(backendWebSocketUrl(sessionId, token));
-        const timeout = window.setTimeout(() => { socket.close(); reject(new Error("Backend timed out.")); }, 45000);
+        const timeout = window.setTimeout(() => { socket.close(); reject(new Error("Backend timed out.")); }, 200000);
 
         socket.addEventListener("open", () => {
           socket.send(JSON.stringify({ prompt: trimmedPrompt, nodes, edges }));
@@ -267,7 +278,14 @@ export function CanvasWorkbench({
             window.clearTimeout(timeout);
             setNodes(frame.nodes);
             setEdges(frame.edges);
-            appendFrame({ prompt: trimmedPrompt, summary: "Rendered from backend LangGraph payload.", nodes: frame.nodes.length, edges: frame.edges.length, payload: { nodes: frame.nodes, edges: frame.edges } });
+            appendFrame({ 
+              prompt: trimmedPrompt, 
+              // Use the AI's conversational response!
+              summary: (frame as any).ai_response || "Canvas updated.", 
+              nodes: frame.nodes.length, 
+              edges: frame.edges.length, 
+              payload: { nodes: frame.nodes, edges: frame.edges } 
+            });
             toast.success("Canvas updated");
             socket.close();
             resolve();
@@ -343,7 +361,7 @@ export function CanvasWorkbench({
       {/* Canvas Area */}
       <section className="bg-card border-border min-h-[28rem] overflow-hidden rounded-lg border">
         <ReactFlowProvider>
-          <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} fitView fitViewOptions={{ padding: 0.25 }} defaultEdgeOptions={{ type: "smoothstep" }} proOptions={{ hideAttribution: true }}>
+          <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} fitView fitViewOptions={{ padding: 0.25 }} defaultEdgeOptions={{ type: "smoothstep" }} proOptions={{ hideAttribution: true }}>
             <Background gap={24} />
             <Controls position="bottom-left" />
             <MiniMap pannable zoomable position="bottom-right" />
@@ -376,7 +394,8 @@ export function CanvasWorkbench({
           
           <div className="mt-4 flex flex-wrap gap-2">
             <Button type="button" size="sm" variant="outline" onClick={() => goToFrame(deckFrames.length - 1)}><RotateCcw className="size-4 mr-1.5" /> Latest</Button>
-                        <Button type="button" size="sm" variant="outline" onClick={restoreInitial}><RotateCcw className="size-4 mr-1.5" /> Restore</Button>
+            <Button type="button" size="sm" variant="outline" onClick={restoreInitial}><RotateCcw className="size-4 mr-1.5" /> Restore</Button>
+            <ResourceModal sessionId={sessionId} />
             <Button type="button" size="sm" variant="outline" onClick={addToRecall} disabled={recalling}>
               {recalling ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <BookOpenCheck className="size-4 mr-1.5" />} Recall
             </Button>
@@ -405,7 +424,11 @@ export function CanvasWorkbench({
                     <div className="bg-secondary flex size-8 shrink-0 items-center justify-center rounded-full"><Bot className="size-4" /></div>
                     <div className="bg-muted text-foreground rounded-2xl rounded-tl-none px-4 py-2 text-sm border border-border">
                       <p className="font-medium text-xs text-muted-foreground mb-1">Canvas Updated</p>
-                      {frame.summary}
+                      <div className="prose prose-invert prose-sm max-w-none prose-p:leading-snug prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {frame.summary}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -490,7 +513,7 @@ export function CanvasWorkbench({
                 </div>
               </PanelBlock>
 
-                            <PanelBlock title="Agent Trace" icon={Zap}>
+              <PanelBlock title="Agent Trace" icon={Zap}>
                 <div className="space-y-3">
                   {trace.map((entry, index) => {
                     const Icon = AGENT_ICONS[index] ?? CheckCircle2;

@@ -42,16 +42,57 @@ async def session_socket(ws: WebSocket, session_id: str, token: str | None = Que
     
     try:
         while True:
-            raw = await ws.receive_text()
-            # ... [The rest of your while loop stays exactly the same!] ...
+            # 1. Safely attempt to receive text
+            try:
+                raw = await ws.receive_text()
+            except (WebSocketDisconnect, RuntimeError):
+                logger.info(f"Client disconnected from session {session_id}")
+                break # Safely exit the loop if socket is dead
+
+            # 2. Parse the JSON
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 await ws.send_json({"type": "error", "message": "invalid json"})
                 continue
 
+            # --- Fetch Chat History from the Database ---
+            try:
+                past_turns = session_store.history(user_id, session_id)
+                chat_history = []
+                for turn in past_turns[-5:]: # Last 5 turns for context
+                    chat_history.append({"role": "user", "content": turn.prompt})
+                    
+                    # Pull AI response from the payload to cure "amnesia"
+                    payload_dict = turn.payload if isinstance(turn.payload, dict) else turn.payload.model_dump()
+                    ai_text = payload_dict.get("ai_response", "I updated the canvas.")
+                    chat_history.append({"role": "assistant", "content": ai_text})
+            except Exception as e:
+                logger.error(f"Failed to fetch history for session {session_id}: {e}")
+                chat_history = []
+                
+             # --- 2. Fetch Session Grounding Resources (NEW) ---
+            try:
+                # db is the Supabase client initialized at the start of session_socket
+                resource_response = db.table("canvas_resources") \
+                    .select("content") \
+                    .eq("session_id", session_id) \
+                    .execute()
+                
+                # Combine all resource texts into one block for the Researcher Agent
+                if resource_response.data:
+                    external_docs = "\n\n---\n\n".join([r["content"] for r in resource_response.data])
+                else:
+                    external_docs = "No external documents provided."
+            except Exception as e:
+                logger.error(f"Resource fetch failed for session {session_id}: {e}")
+                external_docs = "No external documents provided."
+
+            # --- Inject chat_history into the LangGraph state ---
             initial = {
                 "prompt": str(msg.get("prompt", "")),
+                "chat_history": chat_history,
+                "external_docs": external_docs, # <--- Grounding data injected here
                 "nodes": list(msg.get("nodes") or []),
                 "edges": list(msg.get("edges") or []),
                 "trace": [],
@@ -59,27 +100,46 @@ async def session_socket(ws: WebSocket, session_id: str, token: str | None = Que
 
             final_state: dict = {}
             seen = 0
+            
             try:
                 async for chunk in _graph.astream(initial):
+                    if ws.client_state.value != 1: # 1 is CONNECTED
+                        break
+                        
                     for _node_name, delta in chunk.items():
                         final_state.update(delta)
                         trace = final_state.get("trace") or []
                         for entry in trace[seen:]:
-                            await ws.send_json({"type": "status", **entry})
+                            if ws.client_state.value == 1:
+                                await ws.send_json({"type": "status", **entry})
                         seen = len(trace)
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("ws pipeline failed for session %s", session_id)
-                await ws.send_json({"type": "error", "message": f"pipeline failed: {exc}"})
+            except Exception as exc:
+                # 1. Catch the specific timeout/disconnect exceptions
+                if type(exc).__name__ in ("GeneratorExit", "CancelledError"):
+                    logger.info(f"Session {session_id} generation cancelled (Client disconnected or timed out)")
+                    break
+                
+                # 2. Log actual errors with more detail
+                logger.error(f"Pipeline Error: {type(exc).__name__} - {str(exc)}")
+                try:
+                    if ws.client_state.value == 1:
+                        await ws.send_json({"type": "error", "message": "Model busy or generation failed."})
+                except RuntimeError:
+                    pass
                 continue
 
+            # --- Save to Database & Send Payload ---
             payload = final_state.get("output_payload") or {"nodes": [], "edges": []}
             try:
-                # Store the turn using the authenticated user_id
                 session_store.append_turn(user_id, session_id, initial["prompt"], payload)
-            except Exception:  # noqa: BLE001
+            except Exception: 
                 logger.exception("session_store.append_turn failed for %s", session_id)
                 
-            await ws.send_json({"type": "payload", **payload})
+            try:
+                if ws.client_state.value == 1:
+                    await ws.send_json({"type": "payload", **payload})
+            except RuntimeError:
+                break # Connection died while sending payload
             
     except WebSocketDisconnect:
-        return
+        pass # Normal disconnect route

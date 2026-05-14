@@ -11,18 +11,26 @@ class CanvasPosition(BaseModel):
     y: float
 
 
+class CanvasNodeData(BaseModel):
+    label: str | None = Field(default=None, description="Main text, variable name, or gate type")
+    value: str | None = Field(default=None, description="Data inside memory_block, or a pointer address")
+    address: str | None = Field(default=None, description="Hex address for memory_block (e.g., 0xFA12)")
+    inputs: str | None = Field(default=None, description="Inputs for logic_gate (e.g., 'S=0, R=1')")
+    outputs: str | None = Field(default=None, description="Outputs for logic_gate (e.g., 'Q=1, Q_bar=0')")
+
 class CanvasNode(BaseModel):
     id: str
-    type: str = "default"
+    # STRICT LOCK: Only these 3 types are allowed now.
+    type: Literal["default", "memory_block", "logic_gate"] = "default"
     position: CanvasPosition
-    data: dict[str, Any] = Field(default_factory=dict)
+    data: CanvasNodeData = Field(default_factory=CanvasNodeData)
 
 
 class CanvasEdge(BaseModel):
     id: str
     source: str
     target: str
-    type: str | None = None
+    type: Literal["default", "straight", "step", "smoothstep"] = "smoothstep"
     animated: bool | None = None
     label: str | None = None
     data: dict[str, Any] = Field(default_factory=dict)
@@ -31,7 +39,7 @@ class CanvasEdge(BaseModel):
 class CanvasPayload(BaseModel):
     nodes: list[CanvasNode] = Field(default_factory=list)
     edges: list[CanvasEdge] = Field(default_factory=list)
-
+    ai_response: str = Field(default="Canvas updated.")
 
 class TraceEntry(BaseModel):
     agent: str

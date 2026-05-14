@@ -1,119 +1,44 @@
-"""Agent 3 — Schema Enforcer.
-
-Takes the visual script and emits a strict React Flow JSON payload:
-`{"nodes": [...], "edges": [...]}`. This agent never produces free text;
-its output is the source of truth shipped to the frontend.
-
-For the skeleton it emits a deterministic 3-node demo graph so the frontend
-can render *something* end-to-end. Replace with a real LLM call constrained
-by JSON-mode / function calling when the live model is wired in.
-"""
-
-from __future__ import annotations
-
 import json
-import uuid
 from typing import Any
-
 from canvasai.agents.base import AgentBase
-
+from canvasai.schemas import CanvasPayload
 
 class SchemaEnforcer(AgentBase):
-    role = "agent_3_schema"
+    role = "agent_3_enforcer"
+    model_tier = "heavy"
     system_prompt = (
-        "You output ONLY minified JSON of shape {\"nodes\":[...],\"edges\":[...]} "
-        "compatible with React Flow. Reject any conversational tokens."
+        "You are a React Flow Schema Compiler. Generate the JSON payload strictly following the Visual Script.\n\n"
+        "SCHEMA & PERSISTENCE RULES:\n"
+        "1. ID RETENTION: You MUST reuse existing IDs from the 'CURRENT_STATE' for nodes/edges that persist.\n"
+        "2. INJECT RESPONSE: Copy the provided AI_CHAT_RESPONSE exactly into the 'ai_response' field.\n"
+        "3. ALLOWED EDGE TYPES ONLY: Edge 'type' MUST ONLY be 'default', 'straight', 'step', or 'smoothstep'. NEVER use custom words like 'Triggers'. Use the edge 'label' for that.\n"
+        "4. STRICT SCHEMA: Output only valid JSON matching the exact required schema.\n\n"
+        "SPATIAL & LAYOUT RULES (CLEAN CANVAS MANDATE):\n"
+        "5. WIDE CUSTOM NODES: Pay attention to 'type'. Custom nodes like 'memory_block', 'logic_gate', and 'code_stepper' are WIDE (approx 250px-350px).\n"
+        "6. GRID SPACING: To prevent overlapping, space nodes horizontally by AT LEAST X += 350 units, and vertically by Y += 150 units.\n"
+        "7. FLOW DIRECTION: Place 'Input' or 'Start' nodes on the left (X=0). Move right (X+=350) for sequence. Stack related items (like arrays of memory blocks) vertically (Y+=150).\n"
+        "8. NO COLLISION: No two nodes should ever have the exact same (x, y) coordinates."
+        "9. BOUNDING BOXES: If describing a 'Container' or 'Group', ensure all child nodes have coordinates logically contained within that group's area."
     )
 
     async def __call__(self, state: dict[str, Any]) -> dict[str, Any]:
-        model_payload = await self.llm.complete(
-            system=self.system_prompt,
-            user=json.dumps(
-                {
-                    "prompt": state.get("prompt", ""),
-                    "current_nodes": state.get("nodes") or [],
-                    "current_edges": state.get("edges") or [],
-                    "visual_script": state.get("visual_script", ""),
-                },
-                default=str,
-            ),
+        visual_script = state.get("visual_script", "")
+        ai_response = state.get("ai_response_draft", "Canvas updated.")
+        
+        user_input = (
+            f"AI_CHAT_RESPONSE: {ai_response}\n\n"
+            f"VISUAL_SCRIPT: {visual_script}\n\n"
+            f"CURRENT_STATE: {json.dumps({'nodes': state.get('nodes', []), 'edges': state.get('edges', [])})}"
         )
-        payload = _parse_payload(model_payload)
-        if payload:
-            return {
-                "output_payload": payload,
-                "trace": self._trace(state, f"emitted {len(payload['nodes'])} model nodes"),
-            }
 
-        prompt = state.get("prompt", "demo")
-        root = str(uuid.uuid4())
-        left = str(uuid.uuid4())
-        right = str(uuid.uuid4())
+        payload: CanvasPayload = await self.llm.structured_complete(
+            model_schema=CanvasPayload,
+            system=self.system_prompt,
+            user=user_input,
+            model=self.model_name
+        )
 
-        payload: dict[str, list[dict[str, Any]]] = {
-            "nodes": [
-                {
-                    "id": root,
-                    "type": "default",
-                    "position": {"x": 0, "y": 0},
-                    "data": {"label": prompt[:32] or "root"},
-                },
-                {
-                    "id": left,
-                    "type": "default",
-                    "position": {"x": -160, "y": 120},
-                    "data": {"label": "left"},
-                },
-                {
-                    "id": right,
-                    "type": "default",
-                    "position": {"x": 160, "y": 120},
-                    "data": {"label": "right"},
-                },
-            ],
-            "edges": [
-                {"id": f"{root}-{left}", "source": root, "target": left},
-                {"id": f"{root}-{right}", "source": root, "target": right},
-            ],
-        }
         return {
-            "output_payload": payload,
-            "trace": self._trace(state, f"emitted {len(payload['nodes'])} nodes"),
+            "output_payload": payload.model_dump(),
+            "trace": self._trace(state, "Compiled strict JSON payload with clean layout"),
         }
-
-
-def _parse_payload(raw: str) -> dict[str, list[dict[str, Any]]] | None:
-    try:
-        data = json.loads(_extract_json(raw))
-    except (json.JSONDecodeError, TypeError):
-        return None
-
-    if not isinstance(data, dict):
-        return None
-    nodes = data.get("nodes")
-    edges = data.get("edges")
-    if not isinstance(nodes, list) or not isinstance(edges, list):
-        return None
-    if not all(isinstance(node, dict) for node in nodes):
-        return None
-    if not all(isinstance(edge, dict) for edge in edges):
-        return None
-    if not all({"id", "position", "data"}.issubset(node) for node in nodes):
-        return None
-    if not all({"id", "source", "target"}.issubset(edge) for edge in edges):
-        return None
-
-    return {"nodes": nodes, "edges": edges}
-
-
-def _extract_json(raw: str) -> str:
-    text = raw.strip()
-    if text.startswith("```"):
-        text = "\n".join(line for line in text.splitlines() if not line.strip().startswith("```")).strip()
-
-    starts = [index for index in (text.find("{"), text.find("[")) if index >= 0]
-    if not starts:
-        return text
-    start = min(starts)
-    end = text.rfind("}" if text[start] == "{" else "]")
-    return text[start : end + 1] if end >= start else text[start:]
