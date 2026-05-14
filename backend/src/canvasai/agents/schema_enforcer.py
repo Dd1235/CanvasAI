@@ -7,28 +7,43 @@ class SchemaEnforcer(AgentBase):
     role = "agent_3_enforcer"
     model_tier = "heavy"
     system_prompt = (
-        "You are a React Flow Schema Compiler. Generate the JSON payload strictly following the Visual Script.\n\n"
-        "SCHEMA & PERSISTENCE RULES:\n"
+        "You are a React Flow Schema Compiler. You convert 'visual_script' into valid JSON.\n\n"
+        "### SCHEMA & PERSISTENCE RULES:\n"
         "1. ID RETENTION: You MUST reuse existing IDs from the 'CURRENT_STATE' for nodes/edges that persist.\n"
-        "2. INJECT RESPONSE: Copy the provided AI_CHAT_RESPONSE exactly into the 'ai_response' field.\n"
-        "3. ALLOWED EDGE TYPES ONLY: Edge 'type' MUST ONLY be 'default', 'straight', 'step', or 'smoothstep'. NEVER use custom words like 'Triggers'. Use the edge 'label' for that.\n"
-        "4. STRICT SCHEMA: Output only valid JSON matching the exact required schema.\n\n"
-        "SPATIAL & LAYOUT RULES (CLEAN CANVAS MANDATE):\n"
-        "5. WIDE CUSTOM NODES: Pay attention to 'type'. Custom nodes like 'memory_block', 'logic_gate', and 'code_stepper' are WIDE (approx 250px-350px).\n"
-        "6. GRID SPACING: To prevent overlapping, space nodes horizontally by AT LEAST X += 350 units, and vertically by Y += 150 units.\n"
-        "7. FLOW DIRECTION: Place 'Input' or 'Start' nodes on the left (X=0). Move right (X+=350) for sequence. Stack related items (like arrays of memory blocks) vertically (Y+=150).\n"
-        "8. NO COLLISION: No two nodes should ever have the exact same (x, y) coordinates."
-        "9. BOUNDING BOXES: If describing a 'Container' or 'Group', ensure all child nodes have coordinates logically contained within that group's area."
+        "2. ALLOWED EDGE TYPES ONLY: Edge 'type' MUST ONLY be 'default', 'straight', 'step', or 'smoothstep'. NEVER use custom words like 'Triggers'. Use the edge 'label' for that.\n"
+        "3. STRICT SCHEMA: Output only valid JSON matching the exact required schema.\n\n"
+        
+        "### SPATIAL & LAYOUT DESIGN (GRID 2026)\n"
+        "1. LESSON_PLAN NODES: Always place at X: -400, Y: 0. This acts as a fixed sidebar. "
+        "   Ensure its data matches: { 'steps': [...], 'active_step': int }.\n"
+        "2. CODE_STEPPER NODES: These are massive (500px wide). Place them at Y: 0, X: 0. "
+        "   Move all other supporting nodes (memory_blocks) to Y: 450 or below to avoid overlap.\n"
+        "3. ID PERSISTENCE: If a node exists in CURRENT_STATE and is mentioned in the script, YOU MUST USE THE SAME ID.\n"
+        "4. ALIGNMENT: Stack 'memory_block' nodes vertically (Y += 150) if they represent an array or stack.\n\n"
+        "5. BOUNDING BOXES: If describing a 'Container' or 'Group', ensure all child nodes have coordinates logically contained within that group's area."
+  
+        "### DATA INTEGRITY\n"
+        "- Ensure 'code_stepper' data includes the 'frames' array exactly as intended by the Architect.\n"
+        "- The 'ai_response' field in the final payload MUST contain the full 'AI_CHAT_RESPONSE'."
     )
 
     async def __call__(self, state: dict[str, Any]) -> dict[str, Any]:
         visual_script = state.get("visual_script", "")
         ai_response = state.get("ai_response_draft", "Canvas updated.")
+        current_state = {"nodes": state.get("nodes", []), "edges": state.get("edges", [])}
         
+        # We also pass the lesson plan info here so the Enforcer can 
+        # keep the 'LessonPlanNode' updated if it's already on screen.
+        lesson_plan_info = {
+            "plan": state.get("lesson_plan", []),
+            "current_step": state.get("current_step_index", 0)
+        }
+
         user_input = (
             f"AI_CHAT_RESPONSE: {ai_response}\n\n"
             f"VISUAL_SCRIPT: {visual_script}\n\n"
-            f"CURRENT_STATE: {json.dumps({'nodes': state.get('nodes', []), 'edges': state.get('edges', [])})}"
+            f"LESSON_PLAN_INFO: {json.dumps(lesson_plan_info)}\n\n"
+            f"CURRENT_STATE: {json.dumps(current_state)}"
         )
 
         payload: CanvasPayload = await self.llm.structured_complete(
@@ -40,5 +55,5 @@ class SchemaEnforcer(AgentBase):
 
         return {
             "output_payload": payload.model_dump(),
-            "trace": self._trace(state, "Compiled strict JSON payload with clean layout"),
+            "trace": self._trace(state, "Compiled final React Flow payload"),
         }

@@ -92,10 +92,14 @@ async def session_socket(ws: WebSocket, session_id: str, token: str | None = Que
             initial = {
                 "prompt": str(msg.get("prompt", "")),
                 "chat_history": chat_history,
-                "external_docs": external_docs, # <--- Grounding data injected here
+                "external_docs": external_docs,
                 "nodes": list(msg.get("nodes") or []),
                 "edges": list(msg.get("edges") or []),
                 "trace": [],
+                # --- NEW: Extract planning state from the frontend ---
+                "is_planning": bool(msg.get("is_planning", False)),
+                "lesson_plan": list(msg.get("lesson_plan") or []),
+                "current_step_index": int(msg.get("current_step_index", 0)),
             }
 
             final_state: dict = {}
