@@ -36,9 +36,9 @@ def build_graph():
     g: StateGraph = StateGraph(GraphState)
     g.add_node("retrieval", retrieval)
     g.add_node("synthesizer", synth)
+    g.add_node("planner", planner)
     g.add_node("architect", architect)
     g.add_node("enforcer", enforcer)
-    g.add_node("planner", planner) # <--- Register the new node
 
     g.set_entry_point("retrieval")
     g.add_edge("retrieval", "synthesizer")
@@ -57,7 +57,7 @@ def build_graph():
     
     # Both paths eventually flow into the schema enforcer to ensure 
     # the frontend receives perfectly formatted JSON.
-    g.add_edge("planner", "enforcer")
+    g.add_edge("planner", "architect")
     g.add_edge("architect", "enforcer")
     g.add_edge("enforcer", END)
 

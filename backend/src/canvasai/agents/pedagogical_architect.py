@@ -17,6 +17,10 @@ class PedagogicalArchitect(AgentBase):
         "You are an expert Whiteboard Teacher. Your goal is to guide a student through a concept "
         "using the 'Inside-Out' method (foundation first, then abstraction).\n\n"
         
+        "### PLANNING PHASE RULE (CRITICAL)\n"
+        "If 'is_planning' is True and no 'lesson_plan' node exists on the canvas, your priority "
+        "is to ADD the 'lesson_plan' node using the steps provided. \n\n"
+        
         "### LESSON PLAN PROGRESSION (CRITICAL)\n"
         "You have access to a 'lesson_plan' and the 'current_step_index'.\n"
         "1. If the user explicitly confirms the plan (e.g., 'Looks good', 'Start'), or answers a check-in question correctly, you MUST set `advance_step` to true.\n"
@@ -46,6 +50,7 @@ class PedagogicalArchitect(AgentBase):
         facts = state.get("retrieved_facts", "")
         plan = state.get("lesson_plan", [])
         step_idx = state.get("current_step_index", 0)
+        is_planning = state.get("is_planning", False)
         
         # Determine the current "Mission"
         current_mission = f"Teaching Step: {plan[step_idx]}" if plan and step_idx < len(plan) else f"Direct Query: {intent}"
@@ -53,9 +58,12 @@ class PedagogicalArchitect(AgentBase):
         current_nodes = state.get("nodes", [])
         simplified_nodes = [{"id": n.get("id"), "type": n.get("type"), "data": n.get("data")} for n in current_nodes]
         
+        # We must tell the LLM that is_planning is TRUE for the Planning Rule to work
         user_input = (
+            f"IS_PLANNING_PHASE: {is_planning}\n" # Triggers the "ADD lesson_plan" rule
             f"CURRENT MISSION: {current_mission}\n\n"
             f"FACTS TO TEACH: {facts}\n\n"
+            f"LESSON_PLAN_STEPS: {json.dumps(plan)}\n" # Gives Architect the data to draw the sidebar
             f"CURRENT CANVAS STATE:\n{json.dumps(simplified_nodes, indent=2)}"
         )
         
@@ -74,12 +82,15 @@ class PedagogicalArchitect(AgentBase):
         # We append a specific instruction to the visual script so the Enforcer
         # knows to visually highlight the new step on the Lesson Plan sidebar!
         final_script = output.visual_script
+        
+        # If the AI advanced the step, we force a visual update of the sidebar
         if output.advance_step:
             final_script += f"\nUPDATE node with type 'lesson_plan' to highlight active_step: {new_step_idx}"
 
         return {
             "ai_response_draft": output.ai_chat_response,
             "visual_script": final_script,
-            "current_step_index": new_step_idx, # <--- Mutates the LangGraph state!
+            "current_step_index": new_step_idx, # Mutates the LangGraph state
+            "is_planning": False, # Reset planning flag so we don't redraw the plan every turn
             "trace": self._trace(state, f"Advanced to step {new_step_idx}" if output.advance_step else "Refined current step"),
         }

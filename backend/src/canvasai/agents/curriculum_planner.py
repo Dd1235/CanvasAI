@@ -35,13 +35,9 @@ class CurriculumPlanner(AgentBase):
             model=self.model_name
         )
 
-        # We create a 'pseudo-script' for the enforcer to turn into a UI
-        visual_script = f"CREATE_NODE type:lesson_plan steps:{json.dumps(output.lesson_plan)}"
-
         return {
             "lesson_plan": output.lesson_plan,
             "ai_response_draft": output.ai_response,
-            "visual_script": visual_script,
             "is_planning": True,
             "trace": self._trace(state, "Generated a step-by-step lesson plan"),
         }

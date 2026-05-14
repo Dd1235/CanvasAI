@@ -67,6 +67,8 @@ import type {
 import { cn } from "@/lib/utils";
 import { MemoryBlock } from "./nodes/MemoryBlock";
 import { LogicGateNode } from "./nodes/LogicGateNode";
+import LessonPlanNode from './nodes/LessonPlanNode';
+import CodeStepperNode from './nodes/CodeStepperNode';
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -97,6 +99,8 @@ type DeckFrame = DemoTurn & {
 const nodeTypes = {
   memory_block: MemoryBlock,
   logic_gate: LogicGateNode,
+  lesson_plan: LessonPlanNode,
+  code_stepper: CodeStepperNode,
 };
 
 export function CanvasWorkbench({
@@ -261,7 +265,7 @@ export function CanvasWorkbench({
     try {
       await new Promise<void>((resolve, reject) => {
         const socket = new WebSocket(backendWebSocketUrl(sessionId, token));
-        const timeout = window.setTimeout(() => { socket.close(); reject(new Error("Backend timed out.")); }, 200000);
+        const timeout = window.setTimeout(() => { socket.close(); reject(new Error("Backend timed out.")); }, 800000);
 
         socket.addEventListener("open", () => {
           socket.send(JSON.stringify({ prompt: trimmedPrompt, nodes, edges }));
