@@ -15,7 +15,9 @@ interface CodeStepperData {
 
 export default function CodeStepperNode({ data }: { data: CodeStepperData }) {
   const [currentFrame, setCurrentFrame] = useState(0);
-  const { code = "", frames = [] } = data;
+  // Force 'frames' to be an array even if the backend explicitly sends null
+  const code = data.code || "";
+  const frames = Array.isArray(data.frames) ? data.frames : [];
   
   // Safely grab current frame data
   const frameData = frames[currentFrame] || { line: -1, variables: {}, explanation: "" };
