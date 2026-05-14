@@ -26,6 +26,7 @@ def create_app() -> FastAPI:
     app.include_router(documents.router)
     app.include_router(knowledge_graph.router)
     app.include_router(ws.router)
+    serve(app, inngest_client, functions)
     return app
 
 
