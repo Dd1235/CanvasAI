@@ -24,6 +24,7 @@ class SchemaEnforcer(AgentBase):
   
         "### DATA INTEGRITY\n"
         "- Ensure 'code_stepper' data includes the 'frames' array exactly as intended by the Architect.\n"
+        "- Format the 'code' field as an ARRAY OF STRINGS (one string per line of code). Do NOT use '\\n' characters."
         "- The 'ai_response' field in the final payload MUST contain the full 'AI_CHAT_RESPONSE'."
     )
 
@@ -53,7 +54,13 @@ class SchemaEnforcer(AgentBase):
             model=self.model_name
         )
 
+        # --- THE FOOLPROOF INJECTION ---
+        final_payload_dict = payload.model_dump()
+        # We aggressively overwrite whatever the Enforcer tried to put here
+        # with the exact, perfect draft from the Architect.
+        final_payload_dict["ai_response"] = ai_response 
+
         return {
-            "output_payload": payload.model_dump(),
+            "output_payload": final_payload_dict,
             "trace": self._trace(state, "Compiled final React Flow payload"),
         }

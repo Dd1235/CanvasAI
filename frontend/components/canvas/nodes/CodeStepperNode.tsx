@@ -8,20 +8,22 @@ interface Frame {
 }
 
 interface CodeStepperData {
-  code: string;
+  code: string | string[]; // To allow both formats, string and array of strings!
   language: string;
   frames: Frame[];
 }
 
 export default function CodeStepperNode({ data }: { data: CodeStepperData }) {
   const [currentFrame, setCurrentFrame] = useState(0);
-  // Force 'frames' to be an array even if the backend explicitly sends null
-  const code = data.code || "";
-  const frames = Array.isArray(data.frames) ? data.frames : [];
+
+  // Safely handle the new array format (with a fallback just in case)
+  const rawCode = data.code || [];
+  const lines = Array.isArray(rawCode) ? rawCode : (typeof rawCode === 'string' ? rawCode.split('\n') : []);
   
+  const frames = Array.isArray(data.frames) ? data.frames : []; 
+
   // Safely grab current frame data
   const frameData = frames[currentFrame] || { line: -1, variables: {}, explanation: "" };
-  const lines = code.split('\n');
 
   return (
     <div className="w-[500px] bg-slate-900 rounded-xl border-2 border-slate-700 shadow-2xl font-mono text-sm overflow-hidden flex flex-col">

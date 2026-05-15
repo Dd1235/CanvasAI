@@ -11,6 +11,13 @@ class CanvasPosition(BaseModel):
     y: float
 
 
+# --- Strictly typed frame so the LLM doesn't panic ---
+class StepperFrame(BaseModel):
+    line: int = Field(description="The line number currently executing")
+    explanation: str = Field(description="Explanation of what is happening")
+    variables: dict[str, str] = Field(default_factory=dict, description="Variable names and their current values")
+
+
 class CanvasNodeData(BaseModel):
     label: str | None = Field(default=None, description="Main text, variable name, or gate type")
     value: str | None = Field(default=None, description="Data inside memory_block, or a pointer address")
@@ -23,9 +30,9 @@ class CanvasNodeData(BaseModel):
     active_step: int | None = Field(default=None, description="Index of the currently active step")
     
     # --- NEW: Code Stepper Fields ---
-    code: str | None = Field(default=None, description="Code snippet to trace")
+    code: list[str] | None = Field(default=None, description="Array of code lines. NEVER use newline characters.")
     language: str | None = Field(default=None, description="Programming language (e.g., 'cpp', 'python')")
-    frames: list[dict[str, Any]] | None = Field(default=None, description="List of execution frames with line, variables, and explanation")
+    frames: list[StepperFrame] | None = Field(default=None, description="List of execution frames with line, variables, and explanation")
 
 
 class CanvasNode(BaseModel):
