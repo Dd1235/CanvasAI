@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ast
 import json
+import re
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import ValidationError
@@ -151,8 +153,11 @@ def _compact_payload(payload: CanvasPayload | None) -> dict[str, list[dict[str, 
         "nodes": [
             {
                 "id": node.id,
-                "label": node.data.get("label"),
-                "detail": node.data.get("detail"),
+                # Using getattr instead of .get() since this is a Pydantic model
+                "label": getattr(node.data, "label", None),
+                "value": getattr(node.data, "value", None),
+                "code": getattr(node.data, "code", None),
+                "steps": getattr(node.data, "steps", None),
             }
             for node in payload.nodes[:16]
         ],
@@ -169,11 +174,30 @@ def _compact_payload(payload: CanvasPayload | None) -> dict[str, list[dict[str, 
 
 
 def _parse_card_drafts(raw: str) -> list[ActiveRecallCardDraft]:
+    clean_json_str = _extract_json(raw)
+    
+    # 1. Attempt to parse
     try:
-        data = json.loads(_extract_json(raw))
-    except (json.JSONDecodeError, TypeError):
-        return []
+        data = json.loads(clean_json_str, strict=False)
+    except json.JSONDecodeError as e:
+        # THE FIX: If standard JSON fails (due to single quotes from stringified Python objects)
+        try:
+            # Safely evaluate the string as a Python literal
+            data = ast.literal_eval(clean_json_str)
+        except (ValueError, SyntaxError):
+            print(f"CRITICAL PARSE ERROR: {e}")
+            print(f"ATTEMPTED TO PARSE: {repr(clean_json_str)}")
+            return []
 
+    # 2. Handle Gemini/LangChain weirdness (e.g., [{'text': '{"cards": ...}'}])
+    if isinstance(data, list) and len(data) >= 1 and isinstance(data[0], dict) and "text" in data[0]:
+        try:
+             # Recursively parse the inner string
+             return _parse_card_drafts(data[0]["text"])
+        except Exception:
+             pass
+
+    # 3. Standard parsing logic
     items = data.get("cards") if isinstance(data, dict) else data
     if not isinstance(items, list):
         return []
@@ -191,15 +215,44 @@ def _parse_card_drafts(raw: str) -> list[ActiveRecallCardDraft]:
 
     return drafts
 
-
 def _extract_json(raw: str) -> str:
+    """Aggressively extracts the first valid JSON object or array from a string."""
     text = raw.strip()
+    
+    # Strip markdown code blocks if present
     if text.startswith("```"):
-        text = "\n".join(line for line in text.splitlines() if not line.strip().startswith("```")).strip()
-
-    starts = [index for index in (text.find("{"), text.find("[")) if index >= 0]
-    if not starts:
-        return text
-    start = min(starts)
-    end = text.rfind("}" if text[start] == "{" else "]")
-    return text[start : end + 1] if end >= start else text[start:]
+        # Remove the first line (e.g., ```json) and the last line (```)
+        lines = text.splitlines()
+        if len(lines) >= 2:
+            text = "\n".join(lines[1:-1]).strip()
+            
+    # Find the first { or [
+    start_obj = text.find("{")
+    start_arr = text.find("[")
+    
+    if start_obj == -1 and start_arr == -1:
+        return text # Give up, return as is
+        
+    # Determine which starts first
+    if start_obj != -1 and (start_arr == -1 or start_obj < start_arr):
+        start_char = "{"
+        end_char = "}"
+        start_idx = start_obj
+    else:
+        start_char = "["
+        end_char = "]"
+        start_idx = start_arr
+        
+    # Find the corresponding closing bracket by counting depth
+    depth = 0
+    for i in range(start_idx, len(text)):
+        if text[i] == start_char:
+            depth += 1
+        elif text[i] == end_char:
+            depth -= 1
+            if depth == 0:
+                # We found the matching end bracket
+                return text[start_idx : i + 1]
+                
+    # Fallback if depth counting fails (e.g., malformed JSON at the end)
+    return text[start_idx:]
