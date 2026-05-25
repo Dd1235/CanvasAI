@@ -575,7 +575,8 @@ export function KnowledgeGraphBoard() {
             <FilePlus2 className="size-4" />
             Add facts
           </Button>
-          <Button variant="default" onClick={() => setSprintOpen(true)}>
+          {/* CHANGED: variant="default" is now variant="outline" */}
+          <Button variant="outline" onClick={() => setSprintOpen(true)}>
             <Brain className="size-4" />
             Study sprint
           </Button>
