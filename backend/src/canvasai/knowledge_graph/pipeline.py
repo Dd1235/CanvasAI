@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import logging
 from typing import Any
@@ -415,6 +416,7 @@ def _embedding_text(title: str, summary: str) -> str:
     return title or summary
 
 
+
 async def extract_candidates(
     artifacts: dict[str, Any],
     *,
@@ -423,8 +425,11 @@ async def extract_candidates(
 ) -> tuple[list[KGNodeCandidate], list[KGEdgeCandidate]]:
     fallback_nodes, fallback_edges = _fallback_candidates(artifacts, source_id=source_id)
     context = _extraction_context(artifacts, existing_nodes or [])
+    
+    # --- Updated System Prompt to use the Transcript ---
     system = (
-        "Extract a learner knowledge graph from canvas/session data. "
+        "Extract a learner knowledge graph from the provided 'lesson_transcript' and facts. "
+        "The transcript contains exactly what was taught to the user. "
         "If manual_title is present, treat it as the submitted topic title. "
         "Do not create sentence-fragment topic titles from terse facts; use the manual_title "
         "as the main concept unless it clearly duplicates an existing_graph title or alias. "
@@ -520,13 +525,24 @@ async def _same_concept_gate(candidate: KGNodeCandidate, existing, score: float)
 
 
 def _extraction_context(artifacts: dict[str, Any], existing_nodes: list) -> dict[str, Any]:
-    latest_canvas = artifacts.get("latest_canvas") or {"nodes": [], "edges": []}
+    # --- NEW: Extract the Zero-Cost Transcript ---
+    turns = artifacts.get("turns") or []
+    transcript_parts = []
+    
+    for turn in turns:
+        # turn["payload"] is typically a dict here based on how we fetch it
+        payload = turn.get("payload") or {}
+        ai_text = payload.get("ai_response")
+        if ai_text:
+            transcript_parts.append(f"AI: {ai_text}")
+            
+    lesson_transcript = "\n\n".join(transcript_parts) if transcript_parts else "No transcript available."
+
     return {
         "session": artifacts.get("session"),
         "manual_title": artifacts.get("manual_title"),
         "latest_prompt": artifacts.get("latest_prompt"),
-        "turn_prompts": [turn.get("prompt") for turn in (artifacts.get("turns") or [])[-8:]],
-        "latest_canvas": _compact_canvas(latest_canvas),
+        "lesson_transcript": lesson_transcript,
         "facts": artifacts.get("facts"),
         "existing_graph": [
             {
@@ -538,13 +554,12 @@ def _extraction_context(artifacts: dict[str, Any], existing_nodes: list) -> dict
             }
             for node in existing_nodes[:40]
         ],
+        # --- Flashcards act as high-yield hints for the LLM ---
         "recall_cards": [
             {
                 "front": card.get("front"),
                 "back": card.get("back"),
                 "tags": card.get("tags") or [],
-                "repetitions": card.get("repetitions"),
-                "last_reviewed_at": card.get("last_reviewed_at"),
             }
             for card in (artifacts.get("recall_cards") or [])[:24]
         ],
@@ -638,15 +653,31 @@ def _fallback_candidates(
 
 
 def _parse_extraction(raw: str, *, source_id: str) -> tuple[list[KGNodeCandidate], list[KGEdgeCandidate]]:
+    clean_json_str = _extract_json(raw)
+    
     try:
-        data = json.loads(_extract_json(raw))
-    except (json.JSONDecodeError, TypeError):
-        return [], []
+        data = json.loads(clean_json_str, strict=False)
+    except json.JSONDecodeError as e:
+        # Fallback to ast literal evaluation for stringified Python objects
+        try:
+            data = ast.literal_eval(clean_json_str)
+        except (ValueError, SyntaxError):
+            logger.error(f"CRITICAL KG PARSE ERROR: {e}\nRaw: {repr(clean_json_str[:200])}")
+            return [], []
+
+    # Handle Gemini multimodal wrapper blocks
+    if isinstance(data, list) and len(data) >= 1 and isinstance(data[0], dict) and "text" in data[0]:
+        try:
+             return _parse_extraction(data[0]["text"], source_id=source_id)
+        except Exception:
+             pass
+
     if not isinstance(data, dict):
         return [], []
 
     raw_nodes = data.get("nodes") or data.get("topics") or data.get("concepts") or []
     raw_edges = data.get("edges") or data.get("relations") or []
+    
     nodes: list[KGNodeCandidate] = []
     for item in raw_nodes[:40]:
         if not isinstance(item, dict):
@@ -942,15 +973,33 @@ def _compact_existing_graph(existing_nodes: list) -> list[dict[str, Any]]:
 
 
 def _extract_json(raw: str) -> str:
+    """Aggressively extracts the first valid JSON object or array from a string."""
     text = raw.strip()
     if text.startswith("```"):
-        text = "\n".join(line for line in text.splitlines() if not line.strip().startswith("```")).strip()
-    starts = [index for index in (text.find("{"), text.find("[")) if index >= 0]
-    if not starts:
-        return text
-    start = min(starts)
-    end = text.rfind("}" if text[start] == "{" else "]")
-    return text[start : end + 1] if end >= start else text[start:]
+        lines = text.splitlines()
+        if len(lines) >= 2:
+            text = "\n".join(lines[1:-1]).strip()
+            
+    start_obj = text.find("{")
+    start_arr = text.find("[")
+    
+    if start_obj == -1 and start_arr == -1:
+        return text 
+        
+    if start_obj != -1 and (start_arr == -1 or start_obj < start_arr):
+        start_char, end_char, start_idx = "{", "}", start_obj
+    else:
+        start_char, end_char, start_idx = "[", "]", start_arr
+        
+    depth = 0
+    for i in range(start_idx, len(text)):
+        if text[i] == start_char:
+            depth += 1
+        elif text[i] == end_char:
+            depth -= 1
+            if depth == 0:
+                return text[start_idx : i + 1]
+    return text[start_idx:]
 
 
 def _as_str_list(value: Any) -> list[str]:

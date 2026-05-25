@@ -55,6 +55,7 @@ import {
   branchSessionFromTurn,
 } from "@/lib/canvasai-api";
 import { createClient } from "@/lib/supabase/client";
+import { useKnowledgeGraphJob } from "@/hooks/useKnowledgeGraphJob";
 import { ResourceModal } from "./ResourceModal";
 import type {
   AgentTrace,
@@ -134,6 +135,7 @@ export function CanvasWorkbench({
   // States for loaders
   const [recalling, setRecalling] = React.useState(false);
   const [exportingGraph, setExportingGraph] = React.useState(false);
+  const [pendingBuildId, setPendingBuildId] = React.useState<string | null>(null);
   const [branchingIndex, setBranchingIndex] = React.useState<number | null>(null);
   
   // Auth & UI State
@@ -142,6 +144,21 @@ export function CanvasWorkbench({
   
   const activeFrame = deckFrames[activeFrameIndex];
   const chatScrollRef = React.useRef<HTMLDivElement>(null);
+
+  // Listen for background job completion modularly
+  useKnowledgeGraphJob({
+    buildId: pendingBuildId,
+    onSuccess: () => {
+      toast.success("Knowledge Graph Updated Successfully! ✨");
+      setExportingGraph(false);
+      setPendingBuildId(null);
+    },
+    onError: () => {
+      toast.error("Failed to update Knowledge Graph.");
+      setExportingGraph(false);
+      setPendingBuildId(null);
+    }
+  });
 
   React.useEffect(() => {
     const fetchToken = async () => {
@@ -355,9 +372,25 @@ export function CanvasWorkbench({
   const exportToKnowledgeGraph = async () => {
     setExportingGraph(true);
     try {
-      const result = await exportSessionToKnowledgeGraph({ sessionId, prompt: deckFrames[activeFrameIndex]?.prompt || "Canvas State", nodes, edges });
-      toast.success(result.message || "Knowledge graph update queued");
-    } catch { toast.info("Knowledge graph export endpoint is not wired yet."); } finally { setExportingGraph(false); }
+      const result = await exportSessionToKnowledgeGraph({ 
+        sessionId, 
+        prompt: deckFrames[activeFrameIndex]?.prompt || "Canvas State", 
+        nodes, 
+        edges 
+      });
+      
+      toast.info("Knowledge graph update queued in background...");
+      
+      // Give the ID to the hook, which will spin up the listener
+      if (result.build_id) {
+        setPendingBuildId(result.build_id);
+      } else {
+        setExportingGraph(false); // Fallback if no ID returned
+      }
+    } catch (err) { 
+      toast.error(err instanceof Error ? err.message : "Export failed."); 
+      setExportingGraph(false); 
+    } 
   };
 
   return (
