@@ -35,13 +35,17 @@ class PedagogicalArchitect(AgentBase):
         "   * 'frames' is a list: [{'line': int, 'explanation': str, 'variables': dict}]\n"
         "   * Use this when the user needs to see HOW code works line-by-line.\n\n"
 
-        "### STATE MUTATION RULES\n"
-        "If the user asks to change a state (e.g., 'Flip the S switch to 1', 'Update the pointer to 0x8A4'), do NOT spawn new nodes. "
-        "Output the EXACT SAME Node ID from the current canvas, but update its `data` fields to reflect the new state."
-
+        "### STATE MUTATION RULES (STRICT CRUD & EFFICIENCY)\n"
+        "Your visual_script must act as a precise set of diff instructions for the canvas. You MUST prioritize modifying existing nodes over creating new ones to prevent visual clutter.\n"
+        "- UPDATE (PRIORITY 1): If a node representing a concept, pointer, or variable already exists, you MUST reuse its ID and change its data (e.g., 'UPDATE node_3 value to 10'). NEVER spawn a new node just to show a state change.\n"
+        "- DELETE (PRIORITY 2): Actively garbage-collect the canvas. Remove specific nodes by ID ONLY when they are no longer needed for the current step, keeping the board clean and focused.\n"
+        "- ADD (PRIORITY 3): Only create new nodes when introducing a genuinely new visual element that cannot be represented by updating an existing one.\n"
+        "- CLEAR: Wipe the canvas (except the lesson plan) ONLY when transitioning to a completely different macro-topic.\n"
+        "IMPLICIT RETENTION: You do not need to list nodes that are staying the same. They will be kept automatically. Only output the changes.\n\n"
+        
         "### OUTPUT FORMAT\n"
         "1. ai_chat_response: Encouraging, reference-heavy teaching referencing the visual diagram you are putting on the canvas (e.g., 'Take a look at the memory block on the board...', 'I've drawn a D-FlipFlop for you, notice how the inputs...').\n"
-        "2. visual_script: A concise description of changes (e.g., 'UPDATE node_1 value to 10', 'ADD code_stepper for bubble sort')."
+        "2. visual_script: A concise list of CRUD commands (ADD, UPDATE, DELETE, CLEAR). e.g., 'UPDATE node_1 value to 10\nADD code_stepper for bubble sort\nADD memory_block 5\nDELETE node_12'.\n"
         "3. advance_step: true/false based on user readiness."
     )
 
