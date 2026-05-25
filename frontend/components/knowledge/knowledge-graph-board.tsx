@@ -169,6 +169,13 @@ function paletteForCluster(cluster: string): ClusterPalette {
   };
 }
 
+// Evaluates confidence and returns theme-aware Tailwind classes
+function getConfidenceColorClass(confidence: number): string {
+  if (confidence >= 0.8) return "text-emerald-600 dark:text-emerald-400 font-semibold";
+  if (confidence >= 0.5) return "text-amber-600 dark:text-amber-400 font-semibold";
+  return "text-rose-600 dark:text-rose-400 font-semibold";
+}
+
 const EDGE_COLORS: Record<KnowledgeGraphEdge["relation"], string> = {
   prerequisite: "#0f766e",
   extends: "#2563eb",
@@ -1180,8 +1187,11 @@ function RevisionPanel({
             <Network className="size-4" />
             <h2 className="truncate text-sm font-semibold">{selected.title}</h2>
           </div>
-          <p className="text-muted-foreground mt-1 text-xs">
-            {selected.cluster.replace("-", " ")} · confidence {Math.round(selected.confidence * 100)}%
+          <p className="text-muted-foreground mt-1 flex items-center gap-1 text-xs">
+            {selected.cluster.replace("-", " ")} · confidence 
+            <span className={getConfidenceColorClass(selected.confidence)}>
+              {Math.round(selected.confidence * 100)}%
+            </span>
           </p>
         </div>
         <Button size="icon-sm" variant="ghost" aria-label="Close revision panel" onClick={onClose}>
