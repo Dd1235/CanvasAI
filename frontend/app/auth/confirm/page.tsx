@@ -13,6 +13,9 @@ import {
 } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 
+import { Metadata } from "next";
+export const metadata: Metadata = { title: "Confirm Email" };
+
 type SearchParams = Promise<{
   token_hash?: string;
   type?: EmailOtpType;

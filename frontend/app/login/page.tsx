@@ -1,6 +1,7 @@
 import { LoginForm } from "@/components/forms/login-form";
 import { AnimatedLoginWrapper } from "@/components/animated-login-wrapper";
-
+import { Metadata } from "next";
+export const metadata: Metadata = { title: "Login" };
 type SearchParams = Promise<{ next?: string; notice?: string; error?: string }>;
 
 export default async function LoginPage({ searchParams }: { searchParams: SearchParams }) {
