@@ -10,7 +10,10 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "CanvasAI",
+  title: {
+    template: "%s | CanvasAI",
+    default: "CanvasAI", // Fallback for pages without a specific title
+  },
   description: "Stateful, interactive visual tutoring engine.",
 };
 

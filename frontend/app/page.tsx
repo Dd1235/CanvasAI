@@ -5,6 +5,8 @@ import { Hero } from "@/components/blocks/hero";
 import { Features } from "@/components/blocks/features";
 import { Workflow } from "@/components/blocks/workflow";
 import { SiteFooter } from "@/components/blocks/site-footer";
+import { Metadata } from "next";
+export const metadata: Metadata = { title: "Home" };
 
 export default async function HomePage() {
   const supabase = await createClient();
