@@ -91,6 +91,11 @@ export function DashboardSidebar(props: React.ComponentProps<typeof Sidebar>) {
     if (sessions.length) void prefetchTopSessions(sessions, 3);
   }, [sessions]);
 
+  const canvasActive = pathname.startsWith("/dashboard/canvas");
+  const currentCanvasId = canvasActive ? pathname.split("/").pop() : undefined;
+  const canvasSession =
+    sessions.find((session) => session.id === currentCanvasId) ?? sessions[0];
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -109,6 +114,35 @@ export function DashboardSidebar(props: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroupLabel>Navigate</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
+              <SidebarMenuItem>
+                {canvasSession ? (
+                  <SidebarMenuButton
+                    asChild
+                    isActive={canvasActive}
+                    tooltip={`Open ${canvasSession.title}`}
+                    onMouseEnter={() => void prefetchSessionHistory(canvasSession.id)}
+                    onFocus={() => void prefetchSessionHistory(canvasSession.id)}
+                  >
+                    <Link href={`/dashboard/canvas/${canvasSession.id}`}>
+                      <Workflow />
+                      <span>Canvas</span>
+                    </Link>
+                  </SidebarMenuButton>
+                ) : (
+                  <NewSessionDialog
+                    onCreated={() => void sessionsQuery.refetch()}
+                    trigger={
+                      <SidebarMenuButton
+                        isActive={canvasActive}
+                        title="Start a canvas session"
+                      >
+                        <Workflow />
+                        <span>Canvas</span>
+                      </SidebarMenuButton>
+                    }
+                  />
+                )}
+              </SidebarMenuItem>
               {NAV.map(({ href, label, tooltip, icon: Icon }) => {
                 const active =
                   pathname === href ||
