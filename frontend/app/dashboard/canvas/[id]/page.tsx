@@ -26,7 +26,7 @@ export default async function CanvasPage({ params }: { params: Params }) {
   const supabase = await createClient();
   const { data: sessionData, error } = await supabase
     .from("canvas_sessions")
-    .select("title")
+    .select("title, neuro_profile")
     .eq("id", id)
     .single();
 
@@ -54,7 +54,7 @@ export default async function CanvasPage({ params }: { params: Params }) {
         </div>
       </div>
       <div className="min-h-0 flex-1">
-        <CanvasWorkbench sessionId={id} topic={realTitle} />
+        <CanvasWorkbench sessionId={id} topic={realTitle} initialProfile={sessionData?.neuro_profile}/>
       </div>
     </div>
   );
