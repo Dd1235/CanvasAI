@@ -3,6 +3,22 @@ import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/server";
 
 type Params = Promise<{ id: string }>;
+import type { Metadata } from "next";
+
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { id } = await params;
+  const supabase = await createClient();
+  
+  const { data: sessionData } = await supabase
+    .from("canvas_sessions")
+    .select("title")
+    .eq("id", id)
+    .single();
+
+  return {
+    title: sessionData?.title || `Session ${id.split("-")[0]}`,
+  };
+}
 
 export default async function CanvasPage({ params }: { params: Params }) {
   const { id } = await params;

@@ -189,6 +189,13 @@ function paletteForCluster(cluster: string): ClusterPalette {
   };
 }
 
+// Evaluates confidence and returns theme-aware Tailwind classes
+function getConfidenceColorClass(confidence: number): string {
+  if (confidence >= 0.8) return "text-emerald-600 dark:text-emerald-400 font-semibold";
+  if (confidence >= 0.5) return "text-amber-600 dark:text-amber-400 font-semibold";
+  return "text-rose-600 dark:text-rose-400 font-semibold";
+}
+
 const EDGE_COLORS: Record<KnowledgeGraphEdge["relation"], string> = {
   prerequisite: "#0f766e",
   extends: "#2563eb",

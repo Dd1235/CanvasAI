@@ -58,7 +58,8 @@ def list_sessions(user_id: str) -> list[SessionSummary]:
             created_at=datetime.fromisoformat(s["created_at"]),
             updated_at=datetime.fromisoformat(s["updated_at"]),
             turn_count=turn_count_res.count or 0,
-            last_prompt=last_turn_res.data[0]["prompt"] if last_turn_res.data else None
+            last_prompt=last_turn_res.data[0]["prompt"] if last_turn_res.data else None,
+            neuro_profile=s.get("neuro_profile", "Spatial"),
         ))
     return summaries
 
@@ -79,7 +80,8 @@ def get_session(user_id: str, session_id: str) -> SessionDetail | None:
         updated_at=datetime.fromisoformat(session_data["updated_at"]),
         turn_count=len(turns),
         last_prompt=turns[-1].prompt if turns else None,
-        turns=turns
+        turns=turns,
+        neuro_profile=session_data.get("neuro_profile", "Spatial"),
     )
 
 def append_turn(user_id: str, session_id: str, prompt: str, payload: dict[str, Any]) -> int:
@@ -172,3 +174,12 @@ def branch_session(user_id: str, session_id: str, turn_index: int) -> dict[str, 
         db.table("canvas_turns").insert(new_turns).execute()
         
     return {"id": new_id, "title": new_title}
+
+# New function to update the profile
+def update_neuro_profile(user_id: str, session_id: str, profile: str) -> None:
+    db = get_supabase()
+    # Verify ownership and update in one query
+    db.table("canvas_sessions").update({
+        "neuro_profile": profile,
+        "updated_at": _now().isoformat()
+    }).eq("id", session_id).eq("user_id", user_id).execute()

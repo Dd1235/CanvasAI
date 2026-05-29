@@ -105,6 +105,7 @@ async def session_socket(ws: WebSocket, session_id: str, token: str | None = Que
             # --- Inject chat_history and state into the LangGraph ---
             initial = {
                 "prompt": str(msg.get("prompt", "")),
+                "user_neuroprofile": str(msg.get("profile", "Spatial")),
                 "chat_history": chat_history,
                 "external_docs": external_docs,
                 "nodes": nodes_list,

@@ -9,6 +9,7 @@ def merge_list(a: list, b: list) -> list:
 class GraphState(TypedDict, total=False):
     # Inputs
     prompt: str
+    user_neuroprofile: str
     chat_history: list[dict[str, str]]
     nodes: list[dict[str, Any]]
     edges: list[dict[str, Any]]

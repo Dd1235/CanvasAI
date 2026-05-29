@@ -8,6 +8,8 @@ import { FeatureBento } from "@/components/blocks/feature-bento";
 import { AgentPipeline } from "@/components/blocks/agent-pipeline";
 import { LandingCTA } from "@/components/blocks/landing-cta";
 import { SiteFooter } from "@/components/blocks/site-footer";
+import { Metadata } from "next";
+export const metadata: Metadata = { title: "Home" };
 
 export default async function HomePage() {
   const supabase = await createClient();
