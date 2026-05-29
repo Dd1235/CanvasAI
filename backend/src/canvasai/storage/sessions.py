@@ -59,7 +59,7 @@ def list_sessions(user_id: str) -> list[SessionSummary]:
             updated_at=datetime.fromisoformat(s["updated_at"]),
             turn_count=turn_count_res.count or 0,
             last_prompt=last_turn_res.data[0]["prompt"] if last_turn_res.data else None,
-            neuro_profile=sessions_res.data.get("neuro_profile", "Spatial"),
+            neuro_profile=s.get("neuro_profile", "Spatial"),
         ))
     return summaries
 
