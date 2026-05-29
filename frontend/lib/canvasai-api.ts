@@ -4,8 +4,6 @@ import type {
   ActiveRecallStats,
   CanvasEdge,
   CanvasNode,
-  ChatMessage,
-  ChatSessionSummary,
   KnowledgeGraphPayload,
   KnowledgeGraphPracticePrinciple,
   KnowledgeGraphPracticeResponse,
@@ -15,7 +13,6 @@ import type {
   KnowledgeGraphTopicStats,
   SessionSummary,
   SessionTurn,
-  VisualizationTool,
 } from "@/lib/canvasai-types";
 import { createClient } from "@/lib/supabase/client";
 
@@ -58,36 +55,6 @@ export async function createCanvasSession(title?: string) {
 
 export async function getCanvasHistory(sessionId: string) {
   return request<{ turns: SessionTurn[] }>(`/sessions/${sessionId}/history`);
-}
-
-export async function listChatSessions() {
-  return request<ChatSessionSummary[]>("/chat/sessions");
-}
-
-export async function createChatSession(title?: string) {
-  return request<{ id: string; title: string }>("/chat/sessions", {
-    method: "POST",
-    body: { title },
-  });
-}
-
-export async function getChatMessages(sessionId: string) {
-  return request<ChatMessage[]>(`/chat/sessions/${sessionId}/messages`);
-}
-
-export async function sendChatMessage(
-  sessionId: string,
-  message: string,
-  visualizationTool: VisualizationTool,
-) {
-  return request<{
-    session_id: string;
-    user_message: ChatMessage;
-    assistant_message: ChatMessage;
-  }>(`/chat/sessions/${sessionId}/messages`, {
-    method: "POST",
-    body: { message, visualization_tool: visualizationTool },
-  });
 }
 
 export async function getActiveRecallStats() {

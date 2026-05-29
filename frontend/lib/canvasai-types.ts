@@ -73,22 +73,6 @@ export type DemoDocument = {
   tags: string[];
 };
 
-export type ChatMessage = {
-  role: "user" | "assistant" | "system";
-  content: string;
-  created_at: string;
-};
-
-export type ChatSessionSummary = {
-  id: string;
-  title: string;
-  created_at: string;
-  updated_at: string;
-  message_count: number;
-};
-
-export type VisualizationTool = "socratic" | "analogy" | "steps" | "diagram";
-
 export type ActiveRecallCard = {
   id: string;
   session_id: string;

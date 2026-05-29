@@ -45,12 +45,7 @@ export function NewSessionDialog({ trigger, className, onCreated }: Props) {
       router.push(`/dashboard/canvas/${session.id}`);
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not create session.", {
-        description: "Backend may be offline. Falling back to a local demo id.",
-      });
-      const localId = `local-${Math.random().toString(36).slice(2, 8)}`;
-      setOpen(false);
-      router.push(`/dashboard/canvas/${localId}`);
+      toast.error(error instanceof Error ? error.message : "Could not create session.");
     } finally {
       setLoading(false);
     }
@@ -60,7 +55,7 @@ export function NewSessionDialog({ trigger, className, onCreated }: Props) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger ?? (
-          <Button size="sm" className={cn(className)}>
+          <Button size="sm" className={cn(className)} title="Create a new canvas session">
             <Plus className="size-4" />
             New session
           </Button>

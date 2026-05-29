@@ -5,7 +5,7 @@ import { LogOut } from "lucide-react";
 export function LogoutButton() {
   return (
     <form action={signout}>
-      <Button type="submit" variant="ghost" size="sm">
+      <Button type="submit" variant="ghost" size="sm" title="Sign out of CanvasAI">
         <LogOut className="mr-2 size-4" />
         Log out
       </Button>

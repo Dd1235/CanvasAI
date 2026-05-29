@@ -14,6 +14,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { DemoDocument } from "@/lib/canvasai-types";
 
 type Props = {
@@ -54,6 +60,7 @@ export function DocumentLibrary({ documents }: Props) {
   };
 
   return (
+    <TooltipProvider delayDuration={150}>
     <div className="mx-auto w-full max-w-6xl space-y-6 px-6 py-8">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
@@ -73,10 +80,15 @@ export function DocumentLibrary({ documents }: Props) {
             className="hidden"
             onChange={stageFiles}
           />
-          <Button type="button" onClick={() => inputRef.current?.click()}>
-            <FileUp className="size-4" />
-            Stage source
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button type="button" onClick={() => inputRef.current?.click()}>
+                <FileUp className="size-4" />
+                Stage source
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Pick PDFs, markdown, or text files to add to grounding</TooltipContent>
+          </Tooltip>
         </div>
       </header>
 
@@ -124,24 +136,32 @@ export function DocumentLibrary({ documents }: Props) {
                     ))}
                   </div>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => toast.info(`${item.title} selected`)}
-                >
-                  <CheckCircle2 className="size-4" />
-                  Select
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toast.info(`${item.title} selected`)}
+                    >
+                      <CheckCircle2 className="size-4" />
+                      Select
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Use this source as canvas grounding</TooltipContent>
+                </Tooltip>
               </div>
             ))}
             {!filteredItems.length ? (
-              <div className="text-muted-foreground p-8 text-center text-sm">No sources match.</div>
+              <div className="text-muted-foreground p-8 text-center text-sm">
+                {items.length === 0 ? "No sources staged yet — upload to begin." : "No sources match."}
+              </div>
             ) : null}
           </div>
         </CardContent>
       </Card>
     </div>
+    </TooltipProvider>
   );
 }
 

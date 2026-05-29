@@ -1,6 +1,6 @@
 import { CanvasWorkbench } from "@/components/canvas/canvas-workbench";
 import { Badge } from "@/components/ui/badge";
-import { createClient } from "@/lib/supabase/server"; // Using server client to fetch real data
+import { createClient } from "@/lib/supabase/server";
 
 type Params = Promise<{ id: string }>;
 import type { Metadata } from "next";
@@ -23,7 +23,6 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 export default async function CanvasPage({ params }: { params: Params }) {
   const { id } = await params;
 
-  // 1. Fetch the REAL session title from your database
   const supabase = await createClient();
   const { data: sessionData, error } = await supabase
     .from("canvas_sessions")
@@ -55,17 +54,7 @@ export default async function CanvasPage({ params }: { params: Params }) {
         </div>
       </div>
       <div className="min-h-0 flex-1">
-        <CanvasWorkbench
-          sessionId={id}
-          topic={realTitle}
-          initialPrompt=""
-          // 2. PASS EMPTY ARRAYS
-          initialNodes={[]} 
-          initialEdges={[]} 
-          initialTrace={[]} 
-          initialTurns={[]} 
-          documents={[]} 
-        />
+        <CanvasWorkbench sessionId={id} topic={realTitle} />
       </div>
     </div>
   );
