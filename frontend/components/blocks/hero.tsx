@@ -3,11 +3,16 @@ import { ArrowRight, CheckCircle2, FileSearch, Sparkles, Workflow } from "lucide
 
 import { Button } from "@/components/ui/button";
 import { AnimatedGroup } from "@/components/ui/animated-group";
+import { KnowledgeConstellation } from "@/components/blocks/knowledge-constellation";
 
 export function Hero() {
   return (
     <section className="overflow-hidden">
       <div className="relative pt-32 md:pt-40">
+        {/* Layered backdrop: animated graph constellation behind a radial
+            fade that re-uses the shadcn --background token. Both layers
+            inherit any tweakcn-injected theme automatically. */}
+        <KnowledgeConstellation className="-z-20 [mask-image:radial-gradient(ellipse_70%_60%_at_50%_30%,#000_30%,transparent_85%)]" />
         <div className="absolute inset-0 -z-10 size-full [background:radial-gradient(125%_125%_at_50%_100%,transparent_0%,var(--background)_75%)]" />
         <div className="mx-auto max-w-5xl px-6 text-center">
           <AnimatedGroup
