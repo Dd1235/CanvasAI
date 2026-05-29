@@ -2,8 +2,11 @@ import { createClient } from "@/lib/supabase/server";
 
 import { SiteHeader } from "@/components/blocks/site-header";
 import { Hero } from "@/components/blocks/hero";
-import { Features } from "@/components/blocks/features";
-import { Workflow } from "@/components/blocks/workflow";
+import { StatsStrip } from "@/components/blocks/stats-strip";
+import { StackMarquee } from "@/components/blocks/stack-marquee";
+import { FeatureBento } from "@/components/blocks/feature-bento";
+import { AgentPipeline } from "@/components/blocks/agent-pipeline";
+import { LandingCTA } from "@/components/blocks/landing-cta";
 import { SiteFooter } from "@/components/blocks/site-footer";
 
 export default async function HomePage() {
@@ -17,8 +20,11 @@ export default async function HomePage() {
       <SiteHeader isAuthed={Boolean(user)} />
       <main className="overflow-hidden">
         <Hero />
-        <Features />
-        <Workflow />
+        <StatsStrip />
+        <StackMarquee />
+        <FeatureBento />
+        <AgentPipeline />
+        <LandingCTA />
       </main>
       <SiteFooter />
     </>

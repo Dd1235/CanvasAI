@@ -1,8 +1,16 @@
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, FileSearch, Sparkles, Workflow } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  FileSearch,
+  Sparkles,
+  Workflow,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { AnimatedGroup } from "@/components/ui/animated-group";
+import { BorderBeam } from "@/components/ui/border-beam";
+import { GradientText } from "@/components/ui/gradient-text";
 import { KnowledgeConstellation } from "@/components/blocks/knowledge-constellation";
 
 export function Hero() {
@@ -14,6 +22,7 @@ export function Hero() {
             inherit any tweakcn-injected theme automatically. */}
         <KnowledgeConstellation className="-z-20 [mask-image:radial-gradient(ellipse_70%_60%_at_50%_30%,#000_30%,transparent_85%)]" />
         <div className="absolute inset-0 -z-10 size-full [background:radial-gradient(125%_125%_at_50%_100%,transparent_0%,var(--background)_75%)]" />
+
         <div className="mx-auto max-w-5xl px-6 text-center">
           <AnimatedGroup
             variants={{
@@ -33,15 +42,17 @@ export function Hero() {
           >
             <div className="bg-muted text-muted-foreground mx-auto inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-medium">
               <Sparkles className="size-3" />
-              Stateful visual tutoring
+              Stateful visual tutoring · streaming multi-agent canvas
             </div>
 
             <h1 className="text-foreground mx-auto mt-8 max-w-3xl text-balance text-5xl font-medium md:text-6xl lg:mt-12">
-              Replace passive video lectures with a live, interactive canvas.
+              Replace passive video lectures with a{" "}
+              <GradientText className="bg-clip-text">live, interactive canvas.</GradientText>
             </h1>
             <p className="text-muted-foreground mx-auto mt-6 max-w-2xl text-pretty text-lg">
-              CanvasAI translates technical documents and conversational intent into a stateful
-              React Flow whiteboard — animated, branchable, and grounded in your sources.
+              CanvasAI streams a four-agent LangGraph pipeline into a React Flow whiteboard,
+              folds each turn into your personal knowledge graph, and schedules
+              spaced-repetition cards from the bits that mattered.
             </p>
 
             <div className="mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row sm:gap-6">
@@ -64,7 +75,11 @@ export function Hero() {
               </Link>
             </div>
 
-            <div className="mt-16 rounded-xl border bg-card p-3 text-left shadow-xl shadow-zinc-950/10">
+            <BorderBeam
+              className="mt-16 shadow-xl shadow-zinc-950/10"
+              innerClassName="p-3 text-left"
+              durationMs={9000}
+            >
               <div className="flex items-center justify-between border-b px-3 py-2">
                 <div className="flex items-center gap-2">
                   <Workflow className="size-4" />
@@ -112,7 +127,7 @@ export function Hero() {
                   ))}
                 </div>
               </div>
-            </div>
+            </BorderBeam>
           </AnimatedGroup>
         </div>
       </div>
