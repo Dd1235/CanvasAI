@@ -7,7 +7,6 @@ import {
   BookOpenCheck,
   FileText,
   LayoutDashboard,
-  MessageSquare,
   Network,
   Plus,
   Sparkles,
@@ -55,12 +54,6 @@ const NAV: {
     label: "Knowledge Graph",
     tooltip: "Your topics, mastery, and review prompts",
     icon: Network,
-  },
-  {
-    href: "/dashboard/chat",
-    label: "Chat",
-    tooltip: "Plain-chat tutor session",
-    icon: MessageSquare,
   },
   {
     href: "/dashboard/recall",

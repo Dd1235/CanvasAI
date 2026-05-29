@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import {
   Background,
   Controls,
@@ -1150,20 +1149,6 @@ function buildStudySprint(
   return items.filter((item): item is SprintItem => item !== null);
 }
 
-function reviewHref(topic: KnowledgeGraphNode) {
-  const prompt = [
-    `Review ${topic.title}.`,
-    `Start with active recall: ask me to answer before explaining.`,
-    `Use this revision target: ${topic.revision_prompt}`,
-    `Then correct misconceptions and give one quick check question.`,
-  ].join(" ");
-  const params = new URLSearchParams({
-    prompt,
-    tool: "socratic",
-  });
-  return `/dashboard/chat?${params.toString()}`;
-}
-
 function TopicNode({
   topic,
   selected,
@@ -1264,9 +1249,6 @@ function RevisionPanel({
               <p className="text-sm font-medium">Revise</p>
             </div>
             <p className="text-muted-foreground mt-2 text-sm">{selected.revision_prompt}</p>
-            <Button className="mt-3" size="sm" variant="outline" asChild>
-              <Link href={reviewHref(selected)}>Start review</Link>
-            </Button>
           </div>
 
           <div>

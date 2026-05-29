@@ -4,10 +4,10 @@ import * as React from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  BookOpenCheck,
   Database,
   FileText,
   History,
-  MessageSquare,
   Network,
   Sparkles,
   Workflow,
@@ -78,8 +78,8 @@ export function DashboardHomeClient() {
               Welcome back
             </h1>
             <p className="text-muted-foreground max-w-2xl">
-              Continue a visual tutoring session, try the learning chat, or review cards
-              generated from prior canvas turns.
+              Continue a visual tutoring session, jump into your knowledge graph, or review
+              cards generated from prior canvas turns.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -97,13 +97,13 @@ export function DashboardHomeClient() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button asChild variant="outline">
-                  <Link href="/dashboard/chat">
-                    <MessageSquare className="size-4" />
-                    Chat
+                  <Link href="/dashboard/recall">
+                    <BookOpenCheck className="size-4" />
+                    Recall
                   </Link>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Talk to the tutor in plain chat</TooltipContent>
+              <TooltipContent>Review due spaced-repetition cards</TooltipContent>
             </Tooltip>
             {latestSession ? (
               <Tooltip>
