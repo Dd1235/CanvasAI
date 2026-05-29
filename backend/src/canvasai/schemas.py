@@ -57,6 +57,7 @@ class CanvasPayload(BaseModel):
     nodes: list[CanvasNode] = Field(default_factory=list)
     edges: list[CanvasEdge] = Field(default_factory=list)
     ai_response: str = Field(default="Canvas updated.")
+    step_title: str | None = Field(default=None)
 
 class TraceEntry(BaseModel):
     agent: str

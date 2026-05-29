@@ -25,4 +25,5 @@ class GraphState(TypedDict, total=False):
     retrieved_facts: str
     visual_script: str
     ai_response_draft: str
+    step_title: str
     output_payload: dict[str, Any]
