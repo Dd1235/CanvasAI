@@ -65,11 +65,32 @@ import type {
   KnowledgeGraphProposalNode,
   KnowledgeGraphTopicStats,
 } from "@/lib/canvasai-types";
-import { MOCK_KNOWLEDGE_GRAPH } from "@/lib/mock-knowledge-graph";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-type GraphSource = "backend" | "mock";
 type SprintPrinciple = KnowledgeGraphPracticePrinciple;
+
+const EMPTY_GRAPH: KnowledgeGraphPayload = {
+  graph_id: "",
+  user_id: "",
+  version: 0,
+  generated_at: new Date(0).toISOString(),
+  source_summary: { sessions: 0, documents: 0, cards: 0 },
+  nodes: [],
+  edges: [],
+  update_plan: {
+    trigger: "manual_refresh",
+    read_endpoint: "/knowledge-graph/current",
+    write_endpoint: "/knowledge-graph/from-session",
+    algorithm: "real-data",
+    notes: [],
+  },
+};
 
 type SprintItem = {
   id: string;
@@ -188,9 +209,9 @@ const PRINCIPLE_META: Record<
 };
 
 export function KnowledgeGraphBoard() {
-  const [graph, setGraph] = React.useState<KnowledgeGraphPayload>(MOCK_KNOWLEDGE_GRAPH);
-  const [source, setSource] = React.useState<GraphSource>("mock");
+  const [graph, setGraph] = React.useState<KnowledgeGraphPayload>(EMPTY_GRAPH);
   const [loading, setLoading] = React.useState(false);
+  const [loaded, setLoaded] = React.useState(false);
   const [panelOpen, setPanelOpen] = React.useState(true);
   const [selectedId, setSelectedId] = React.useState(graph.nodes[0]?.id);
   const [sprintOpen, setSprintOpen] = React.useState(false);
@@ -226,16 +247,15 @@ export function KnowledgeGraphBoard() {
     try {
       const nextGraph = await getKnowledgeGraph();
       setGraph(nextGraph);
-      setSource("backend");
       setSelectedId((current) => {
         if (nextGraph.nodes.some((node) => node.id === current)) return current;
         return nextGraph.nodes[0]?.id;
       });
     } catch {
-      setGraph(MOCK_KNOWLEDGE_GRAPH);
-      setSource("mock");
+      // Real data only — leave the existing graph in place (empty on first load).
     } finally {
       if (!options.silent) setLoading(false);
+      setLoaded(true);
     }
   }, []);
 
@@ -544,13 +564,12 @@ export function KnowledgeGraphBoard() {
   );
 
   return (
+    <TooltipProvider delayDuration={150}>
     <div className="flex h-[calc(100svh-3.5rem)] min-h-0 flex-col gap-4 p-4 md:p-6">
       <style dangerouslySetInnerHTML={{ __html: PULSE_KEYFRAMES }} />
       <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0 space-y-2">
-          <Badge variant={source === "backend" ? "default" : "secondary"}>
-            {source === "backend" ? "Backend graph" : "Mock graph"}
-          </Badge>
+          <Badge variant="default">Live graph</Badge>
           <Badge variant="outline">
             {graph.nodes.length} nodes / {graph.edges.length} edges
           </Badge>
@@ -558,24 +577,39 @@ export function KnowledgeGraphBoard() {
             Knowledge Graph
           </h1>
           <p className="text-muted-foreground max-w-3xl text-sm">
-            Topic nodes, relationship edges, and revision prompts from the user learning graph.
-            The frontend targets <code>{KNOWLEDGE_GRAPH_ENDPOINT}</code>, polls lightly for
-            completed async exports, and falls back to mock data only when the backend request fails.
+            Topic nodes, relationship edges, and revision prompts from your learning graph.
+            The frontend reads <code>{KNOWLEDGE_GRAPH_ENDPOINT}</code> and updates in real time
+            as canvas exports and async merges complete.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setFactsOpen(true)}>
-            <FilePlus2 className="size-4" />
-            Add facts
-          </Button>
-          <Button variant="default" onClick={() => setSprintOpen(true)}>
-            <Brain className="size-4" />
-            Study sprint
-          </Button>
-          <Button variant="outline" onClick={() => void loadGraph()} disabled={loading}>
-            {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
-            Refresh
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" onClick={() => setFactsOpen(true)}>
+                <FilePlus2 className="size-4" />
+                Add facts
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Paste notes and let the LLM propose new nodes &amp; edges</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="default" onClick={() => setSprintOpen(true)}>
+                <Brain className="size-4" />
+                Study sprint
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Adaptive 4-step review: recall, prereq, interleave, teach-back</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" onClick={() => void loadGraph()} disabled={loading}>
+                {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
+                Refresh
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Re-fetch the latest graph from the backend</TooltipContent>
+          </Tooltip>
         </div>
       </header>
 
@@ -607,7 +641,7 @@ export function KnowledgeGraphBoard() {
           )}
         </aside>
 
-        <section className="bg-card border-border min-h-[32rem] overflow-hidden rounded-lg border">
+        <section className="bg-card border-border relative min-h-[32rem] overflow-hidden rounded-lg border">
           <ReactFlowProvider>
             <ReactFlow
               nodes={flowNodes}
@@ -627,6 +661,22 @@ export function KnowledgeGraphBoard() {
               <MiniMap pannable zoomable position="bottom-right" />
             </ReactFlow>
           </ReactFlowProvider>
+          {loaded && graph.nodes.length === 0 ? (
+            <div className="bg-background/90 pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="pointer-events-auto max-w-sm space-y-3 rounded-lg border p-6 text-center shadow-sm">
+                <Network className="text-muted-foreground mx-auto size-6" />
+                <p className="text-sm font-medium">No topics yet</p>
+                <p className="text-muted-foreground text-xs">
+                  Export a canvas session to the graph or use <strong>Add facts</strong> to extract
+                  topics from text.
+                </p>
+                <Button size="sm" onClick={() => setFactsOpen(true)}>
+                  <FilePlus2 className="size-4" />
+                  Add facts
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </section>
       </div>
 
@@ -772,6 +822,7 @@ export function KnowledgeGraphBoard() {
         </DialogContent>
       </Dialog>
     </div>
+    </TooltipProvider>
   );
 }
 
@@ -1172,6 +1223,13 @@ function RevisionPanel({
 }) {
   if (!selected) return null;
 
+  // The graph node renders mastery as its top-right percentage. The sidebar
+  // used to show confidence in the header, which made it look like the two
+  // numbers had drifted out of sync. We now show *both* metrics here, clearly
+  // labelled, and lead with mastery so the header pill matches the node pill.
+  const masteryPct = Math.round(selected.mastery * 100);
+  const confidencePct = Math.round(selected.confidence * 100);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-start justify-between gap-3 border-b p-4">
@@ -1181,7 +1239,7 @@ function RevisionPanel({
             <h2 className="truncate text-sm font-semibold">{selected.title}</h2>
           </div>
           <p className="text-muted-foreground mt-1 text-xs">
-            {selected.cluster.replace("-", " ")} · confidence {Math.round(selected.confidence * 100)}%
+            {selected.cluster.replace("-", " ")} · mastery {masteryPct}%
           </p>
         </div>
         <Button size="icon-sm" variant="ghost" aria-label="Close revision panel" onClick={onClose}>
@@ -1191,6 +1249,10 @@ function RevisionPanel({
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-4 p-4">
+          <div className="grid grid-cols-2 gap-2">
+            <ScorePill label="Mastery" value={masteryPct} hint="Matches the % on the graph node — how well you can recall this topic." />
+            <ScorePill label="Confidence" value={confidencePct} hint="How sure the extractor is that this topic is well-grounded in your sources." />
+          </div>
           <div>
             <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Core idea</p>
             <p className="mt-2 text-sm">{selected.summary}</p>
@@ -1250,5 +1312,35 @@ function RevisionPanel({
         </div>
       </ScrollArea>
     </div>
+  );
+}
+
+function ScorePill({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: number;
+  hint: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="rounded-md border p-3">
+          <p className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
+            {label}
+          </p>
+          <p className="mt-1 text-lg font-semibold">{value}%</p>
+          <div className="bg-muted mt-2 h-1.5 rounded-full">
+            <div
+              className="bg-primary h-full rounded-full"
+              style={{ width: `${Math.max(4, value)}%` }}
+            />
+          </div>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent>{hint}</TooltipContent>
+    </Tooltip>
   );
 }

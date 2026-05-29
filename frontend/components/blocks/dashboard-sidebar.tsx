@@ -3,11 +3,25 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpenCheck, FileText, LayoutDashboard, MessageSquare, Network, Plus, Sparkles, Workflow } from "lucide-react";
+import {
+  BookOpenCheck,
+  FileText,
+  LayoutDashboard,
+  MessageSquare,
+  Network,
+  Plus,
+  Sparkles,
+  Workflow,
+} from "lucide-react";
 
 import { listCanvasSessions } from "@/lib/canvasai-api";
 import type { SessionSummary } from "@/lib/canvasai-types";
-import { DEMO_SESSIONS } from "@/lib/mock-data";
+import {
+  prefetchSessionHistory,
+  prefetchTopSessions,
+  SESSIONS_KEY,
+  useQuery,
+} from "@/lib/session-cache";
 import { NewSessionDialog } from "@/components/dashboard/new-session-dialog";
 import {
   Sidebar,
@@ -24,33 +38,74 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 
-const NAV = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/dashboard/canvas/demo", label: "Canvas", icon: Workflow },
-  { href: "/dashboard/knowledge", label: "Knowledge Graph", icon: Network },
-  { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
-  { href: "/dashboard/recall", label: "Active Recall", icon: BookOpenCheck },
-  { href: "/dashboard/documents", label: "Documents", icon: FileText },
+const NAV: {
+  href: string;
+  label: string;
+  tooltip: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  {
+    href: "/dashboard",
+    label: "Overview",
+    tooltip: "Workspace overview and recent activity",
+    icon: LayoutDashboard,
+  },
+  {
+    href: "/dashboard/knowledge",
+    label: "Knowledge Graph",
+    tooltip: "Your topics, mastery, and review prompts",
+    icon: Network,
+  },
+  {
+    href: "/dashboard/chat",
+    label: "Chat",
+    tooltip: "Plain-chat tutor session",
+    icon: MessageSquare,
+  },
+  {
+    href: "/dashboard/recall",
+    label: "Active Recall",
+    tooltip: "Spaced-repetition review cards",
+    icon: BookOpenCheck,
+  },
+  {
+    href: "/dashboard/documents",
+    label: "Documents",
+    tooltip: "Grounding sources for retrieval",
+    icon: FileText,
+  },
 ];
 
 export function DashboardSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
-  const [sessions, setSessions] = React.useState<SessionSummary[]>([]);
+  const sessionsQuery = useQuery<SessionSummary[]>(
+    SESSIONS_KEY,
+    listCanvasSessions,
+    { staleTime: 15_000 },
+  );
+  const sessions = React.useMemo(() => sessionsQuery.data ?? [], [sessionsQuery.data]);
 
-  const refresh = React.useCallback(() => {
-    listCanvasSessions()
-      .then(setSessions)
-      .catch(() => setSessions([]));
-  }, []);
-
+  // Re-fetch the session list whenever the user navigates (cheap, deduped).
+  // The actual fetch is debounced by the cache's stale check.
   React.useEffect(() => {
-    refresh();
-  }, [pathname, refresh]);
+    void sessionsQuery.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  // Warm canvas history for the most recent sessions so opening them is
+  // instant. Re-runs whenever the list changes.
+  React.useEffect(() => {
+    if (sessions.length) void prefetchTopSessions(sessions, 3);
+  }, [sessions]);
 
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <Link href="/" className="flex items-center gap-2 px-2 py-1.5 font-semibold">
+        <Link
+          href="/"
+          className="flex items-center gap-2 px-2 py-1.5 font-semibold"
+          title="Back to landing page"
+        >
           <Sparkles className="size-4" />
           <span className="group-data-[collapsible=icon]:hidden">CanvasAI</span>
         </Link>
@@ -61,14 +116,13 @@ export function DashboardSidebar(props: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroupLabel>Navigate</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {NAV.map(({ href, label, icon: Icon }) => {
+              {NAV.map(({ href, label, tooltip, icon: Icon }) => {
                 const active =
                   pathname === href ||
-                  (href === "/dashboard/canvas/demo" && pathname.startsWith("/dashboard/canvas")) ||
                   (href !== "/dashboard" && pathname.startsWith(href));
                 return (
                   <SidebarMenuItem key={href}>
-                    <SidebarMenuButton asChild isActive={active} tooltip={label}>
+                    <SidebarMenuButton asChild isActive={active} tooltip={tooltip}>
                       <Link href={href}>
                         <Icon />
                         <span>{label}</span>
@@ -84,9 +138,9 @@ export function DashboardSidebar(props: React.ComponentProps<typeof Sidebar>) {
         <SidebarGroup>
           <SidebarGroupLabel>Sessions</SidebarGroupLabel>
           <NewSessionDialog
-            onCreated={refresh}
+            onCreated={() => void sessionsQuery.refetch()}
             trigger={
-              <SidebarGroupAction title="New session">
+              <SidebarGroupAction title="Start a new canvas session">
                 <Plus />
                 <span className="sr-only">New session</span>
               </SidebarGroupAction>
@@ -94,19 +148,27 @@ export function DashboardSidebar(props: React.ComponentProps<typeof Sidebar>) {
           />
           <SidebarGroupContent>
             <SidebarMenu>
-              {(sessions.length ? sessions : DEMO_SESSIONS).map((session) => {
-                const label = "topic" in session ? session.topic : session.title;
-                return (
+              {sessions.length === 0 ? (
+                <p className="text-muted-foreground px-3 py-2 text-xs group-data-[collapsible=icon]:hidden">
+                  {sessionsQuery.isLoading ? "Loading…" : "No sessions yet."}
+                </p>
+              ) : (
+                sessions.map((session) => (
                   <SidebarMenuItem key={session.id}>
-                    <SidebarMenuButton asChild tooltip={label}>
+                    <SidebarMenuButton
+                      asChild
+                      tooltip={`Open ${session.title}`}
+                      onMouseEnter={() => void prefetchSessionHistory(session.id)}
+                      onFocus={() => void prefetchSessionHistory(session.id)}
+                    >
                       <Link href={`/dashboard/canvas/${session.id}`}>
                         <Workflow />
-                        <span>{label}</span>
+                        <span>{session.title}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                );
-              })}
+                ))
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

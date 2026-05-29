@@ -14,6 +14,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   deleteSessionRecallCards,
   getActiveRecallStats,
   listActiveRecallSessions,
@@ -26,10 +32,10 @@ import type {
 } from "@/lib/canvasai-types";
 
 const RATINGS = [
-  { id: "again", label: "Again" },
-  { id: "hard", label: "Hard" },
-  { id: "good", label: "Good" },
-  { id: "easy", label: "Easy" },
+  { id: "again", label: "Again", hint: "I couldn't recall it — reset the interval." },
+  { id: "hard", label: "Hard", hint: "I got it but with effort — shorten the next interval." },
+  { id: "good", label: "Good", hint: "Solid recall — schedule the standard interval." },
+  { id: "easy", label: "Easy", hint: "Trivial — push the next interval out further." },
 ] as const;
 
 export function ActiveRecallBoard() {
@@ -84,6 +90,7 @@ export function ActiveRecallBoard() {
   };
 
   return (
+    <TooltipProvider delayDuration={150}>
     <div className="mx-auto w-full max-w-6xl space-y-6 px-6 py-8">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
@@ -94,10 +101,15 @@ export function ActiveRecallBoard() {
             canvas deck; recall keeps the session-level prompts that matter later.
           </p>
         </div>
-        <Button variant="outline" onClick={() => void load()}>
-          <RotateCcw className="size-4" />
-          Refresh
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="outline" onClick={() => void load()}>
+              <RotateCcw className="size-4" />
+              Refresh
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Re-fetch recall cards and due counts</TooltipContent>
+        </Tooltip>
       </header>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -130,14 +142,19 @@ export function ActiveRecallBoard() {
                   </Badge>
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Delete recall cards for ${group.session_title}`}
-                onClick={() => deleteSession(group.session_id)}
-              >
-                <Trash2 className="size-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Delete recall cards for ${group.session_title}`}
+                    onClick={() => deleteSession(group.session_id)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Delete every recall card from this session</TooltipContent>
+              </Tooltip>
             </div>
 
             <div className="grid gap-3 p-4 lg:grid-cols-2">
@@ -163,6 +180,7 @@ export function ActiveRecallBoard() {
         </Card>
       ) : null}
     </div>
+    </TooltipProvider>
   );
 }
 
@@ -207,16 +225,26 @@ function RecallCard({
       {revealed ? (
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {RATINGS.map((rating) => (
-            <Button key={rating.id} variant="outline" size="sm" onClick={() => onReview(rating.id)}>
-              {rating.label}
-            </Button>
+            <Tooltip key={rating.id}>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" onClick={() => onReview(rating.id)}>
+                  {rating.label}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{rating.hint}</TooltipContent>
+            </Tooltip>
           ))}
         </div>
       ) : (
-        <Button className="mt-4" variant="outline" onClick={onReveal}>
-          <CalendarClock className="size-4" />
-          Reveal
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button className="mt-4" variant="outline" onClick={onReveal}>
+              <CalendarClock className="size-4" />
+              Reveal
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Show the back of the card before grading recall</TooltipContent>
+        </Tooltip>
       )}
     </article>
   );

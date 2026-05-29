@@ -90,6 +90,7 @@ export function ChatPlayground() {
                 variant={tool === item.id ? "default" : "outline"}
                 className="h-auto justify-start py-3"
                 onClick={() => setTool(item.id)}
+                title={`Frame replies with the ${item.label} tool`}
               >
                 <span className="text-left">
                   <span className="block">{item.label}</span>
@@ -149,7 +150,11 @@ export function ChatPlayground() {
             className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 min-h-12 flex-1 resize-none rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-[3px]"
             placeholder="Ask a learning question"
           />
-          <Button type="submit" disabled={!sessionId || loading || !message.trim()}>
+          <Button
+            type="submit"
+            disabled={!sessionId || loading || !message.trim()}
+            title="Send message to the learning chat backend"
+          >
             {loading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             Send
           </Button>
