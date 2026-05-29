@@ -55,6 +55,7 @@ class PedagogicalArchitect(AgentBase):
         plan = state.get("lesson_plan", [])
         step_idx = state.get("current_step_index", 0)
         is_planning = state.get("is_planning", False)
+        user_neuroprofile = state.get("user_neuroprofile", "Spatial") # Fetch profile
         
         # Determine the current "Mission"
         current_mission = f"Teaching Step: {plan[step_idx]}" if plan and step_idx < len(plan) else f"Direct Query: {intent}"
@@ -62,9 +63,18 @@ class PedagogicalArchitect(AgentBase):
         current_nodes = state.get("nodes", [])
         simplified_nodes = [{"id": n.get("id"), "type": n.get("type"), "data": n.get("data")} for n in current_nodes]
         
-        # We must tell the LLM that is_planning is TRUE for the Planning Rule to work
+        # --- NEW: Dynamic Neuroprofile Instructions ---
+        profile_rules = ""
+        if user_neuroprofile == "Micro-step":
+            profile_rules = "NEUROPROFILE 'Micro-step': Minimize visual clutter. Favor using a single 'code_stepper' node. Break complex ideas into linear, single-line executions. Delete older redundant nodes aggressively."
+        elif user_neuroprofile == "Low-stim":
+            profile_rules = "NEUROPROFILE 'Low-stim': Keep the canvas sparse and highly text-focused. Avoid excessive UI components. Favor single 'default' nodes with clear markdown explanations."
+        else:
+            profile_rules = "NEUROPROFILE 'Spatial': Maximize visual architecture. Break components into separate 'memory_block' and 'logic_gate' nodes to show structural relationships."
+
         user_input = (
-            f"IS_PLANNING_PHASE: {is_planning}\n" # Triggers the "ADD lesson_plan" rule
+            f"ACTIVE NEUROPROFILE: {profile_rules}\n\n"
+            f"IS_PLANNING_PHASE: {is_planning}\n"
             f"CURRENT MISSION: {current_mission}\n\n"
             f"FACTS TO TEACH: {facts}\n\n"
             f"LESSON_PLAN_STEPS: {json.dumps(plan)}\n" # Gives Architect the data to draw the sidebar

@@ -299,3 +299,10 @@ export async function uploadResource(sessionId: string, data: {
     body: data,
   });
 }
+
+export async function updateSessionProfile(sessionId: string, profile: string) {
+  return request<{ status: string }>(`/sessions/${sessionId}/profile`, {
+    method: "PATCH",
+    body: { neuro_profile: profile },
+  });
+}

@@ -10,6 +10,7 @@ from canvasai.schemas import (
     SessionSummary,
     SessionTurn,
     ToggleCheckpointRequest,
+    UpdateProfileRequest,
 )
 from canvasai.storage import sessions as session_store
 from canvasai.api.deps import get_current_user_id
@@ -81,3 +82,12 @@ async def toggle_checkpoint(
 async def branch(session_id: str, turn_index: int, user_id: str = Depends(get_current_user_id)):
     result = session_store.branch_session(user_id, session_id, turn_index)
     return BranchSessionResponse(**result)
+
+@router.patch("/{session_id}/profile")
+async def update_profile(
+    session_id: str, 
+    payload: UpdateProfileRequest,
+    user_id: str = Depends(get_current_user_id)
+) -> dict[str, str]:
+    session_store.update_neuro_profile(user_id, session_id, payload.neuro_profile)
+    return {"status": "success"}

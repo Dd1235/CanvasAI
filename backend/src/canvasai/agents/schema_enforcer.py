@@ -35,15 +35,24 @@ class SchemaEnforcer(AgentBase):
         visual_script = state.get("visual_script", "")
         ai_response = state.get("ai_response_draft", "Canvas updated.")
         current_state = {"nodes": state.get("nodes", []), "edges": state.get("edges", [])}
+        user_neuroprofile = state.get("user_neuroprofile", "Spatial") # Fetch profile
         
-        # We also pass the lesson plan info here so the Enforcer can 
-        # keep the 'LessonPlanNode' updated if it's already on screen.
         lesson_plan_info = {
             "plan": state.get("lesson_plan", []),
             "current_step": state.get("current_step_index", 0)
         }
 
+        # --- NEW: Dynamic Layout Geometry ---
+        profile_layout_rules = ""
+        if user_neuroprofile == "Low-stim":
+            profile_layout_rules = "LOW-STIM PROFILE: Force all new edge 'type' to 'straight' (no animations). Avoid dense clusters. Keep wide padding between nodes."
+        elif user_neuroprofile == "Micro-step":
+            profile_layout_rules = "MICRO-STEP PROFILE: Center the active node at X: 0, Y: 0. Push all other nodes far to the periphery or delete them if commanded."
+        else:
+            profile_layout_rules = "SPATIAL PROFILE: Use 'smoothstep' edges with 'animated': true to visually represent data flow. Group related memory_blocks tightly together vertically."
+
         user_input = (
+            f"ACTIVE NEUROPROFILE LAYOUT RULES:\n{profile_layout_rules}\n\n"
             f"AI_CHAT_RESPONSE: {ai_response}\n\n"
             f"VISUAL_SCRIPT: {visual_script}\n\n"
             f"LESSON_PLAN_INFO: {json.dumps(lesson_plan_info)}\n\n"

@@ -53,6 +53,7 @@ import {
   toggleSessionCheckpoint,
   revertSessionToTurn,
   branchSessionFromTurn,
+  updateSessionProfile,
 } from "@/lib/canvasai-api";
 import { createClient } from "@/lib/supabase/client";
 import { useKnowledgeGraphJob } from "@/hooks/useKnowledgeGraphJob";
@@ -82,6 +83,7 @@ type Props = {
   initialTrace: AgentTrace[];
   initialTurns: DemoTurn[];
   documents: DemoDocument[];
+  initialProfile?: string;
 };
 
 const PROFILES = ["Spatial", "Micro-step", "Low-stim"];
@@ -113,6 +115,7 @@ export function CanvasWorkbench({
   initialTrace,
   initialTurns,
   documents,
+  initialProfile,
 }: Props) {
   const router = useRouter();
   
@@ -129,7 +132,7 @@ export function CanvasWorkbench({
   const [deckFrames, setDeckFrames] = React.useState(initialDeckFrames);
   const [activeFrameIndex, setActiveFrameIndex] = React.useState(Math.max(0, initialDeckFrames.length - 1));
   const [prompt, setPrompt] = React.useState("");
-  const [profile, setProfile] = React.useState(PROFILES[0]);
+  const [profile, setProfile] = React.useState(initialProfile || PROFILES[0]);
   const [running, setRunning] = React.useState(false);
   
   // States for loaders
@@ -144,6 +147,16 @@ export function CanvasWorkbench({
   
   const activeFrame = deckFrames[activeFrameIndex];
   const chatScrollRef = React.useRef<HTMLDivElement>(null);
+
+  const handleProfileChange = async (newProfile: string) => {
+    setProfile(newProfile);
+    try {
+      await updateSessionProfile(sessionId, newProfile);
+      toast.success(`${newProfile} profile active and saved.`);
+    } catch (error) {
+      toast.error("Failed to save profile preference.");
+    }
+  };
 
   // Listen for background job completion modularly
   useKnowledgeGraphJob({
@@ -285,7 +298,7 @@ export function CanvasWorkbench({
         const timeout = window.setTimeout(() => { socket.close(); reject(new Error("Backend timed out.")); }, 800000);
 
         socket.addEventListener("open", () => {
-          socket.send(JSON.stringify({ prompt: trimmedPrompt, nodes, edges }));
+          socket.send(JSON.stringify({ prompt: trimmedPrompt, profile, nodes, edges }));
           setPrompt("");
         });
 
@@ -409,37 +422,30 @@ export function CanvasWorkbench({
       {/* Right Sidebar Area */}
       <aside className="flex min-h-0 flex-col gap-4">
         
-        {/* Session Header */}
+        {/* Neuroprofile Selector - Kept at the top for quick access */}
         <div className="bg-card border-border rounded-lg border p-4 shrink-0">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Session</p>
-              <h2 className="mt-1 text-base font-semibold">{topic}</h2>
-            </div>
-            {/* Bookmark Button for the Current View */}
-            <Button 
-              size="sm" 
-              variant={activeFrame?.is_checkpoint ? "default" : "outline"}
-              onClick={() => toggleCheckpoint(activeFrameIndex)}
-              className="shrink-0"
-              title={activeFrame?.is_checkpoint ? "Remove Checkpoint" : "Mark as Checkpoint"}
-            >
-              <Bookmark className={cn("size-4 mr-1.5", activeFrame?.is_checkpoint ? "fill-current" : "")} /> 
-              Step {activeFrameIndex + 1}
-            </Button>
+          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide mb-3">Cognitive Profile</p>
+          <div className="flex bg-muted/50 p-1 rounded-lg">
+            {PROFILES.map((p) => (
+              <button 
+                key={p}
+                onClick={() => handleProfileChange(p)} // <--- UPDATE THIS
+                className={cn(
+                  "flex-1 py-1.5 text-xs font-medium rounded-md transition-all", 
+                  profile === p 
+                    ? "bg-background shadow-sm text-foreground" 
+                    : "text-muted-foreground hover:bg-muted"
+                )}
+              >
+                {p}
+              </button>
+            ))}
           </div>
-          
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={() => goToFrame(deckFrames.length - 1)}><RotateCcw className="size-4 mr-1.5" /> Latest</Button>
-            <Button type="button" size="sm" variant="outline" onClick={restoreInitial}><RotateCcw className="size-4 mr-1.5" /> Restore</Button>
-            <ResourceModal sessionId={sessionId} />
-            <Button type="button" size="sm" variant="outline" onClick={addToRecall} disabled={recalling}>
-              {recalling ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <BookOpenCheck className="size-4 mr-1.5" />} Recall
-            </Button>
-            <Button type="button" size="sm" variant="outline" onClick={exportToKnowledgeGraph} disabled={exportingGraph}>
-              {exportingGraph ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <Network className="size-4 mr-1.5" />} Graph
-            </Button>
-          </div>
+          <p className="text-[10px] text-muted-foreground mt-2 text-center">
+            {profile === "Spatial" && "Maximized visual structure and data flow."}
+            {profile === "Micro-step" && "Hyper-focused, linear step-by-step execution."}
+            {profile === "Low-stim" && "Minimalist layout with reduced visual noise."}
+          </p>
         </div>
 
         {/* Tab Toggle */}
@@ -448,7 +454,7 @@ export function CanvasWorkbench({
           <button onClick={() => setActiveTab("tools")} className={cn("flex-1 flex items-center justify-center gap-2 py-1.5 text-sm font-medium rounded-md transition-colors", activeTab === "tools" ? "bg-background shadow-sm" : "text-muted-foreground hover:bg-muted")}><Wrench className="size-4" /> Workbench</button>
         </div>
 
-        {/* TAB 1: CHAT INTERFACE (Remains the same) */}
+        {/* TAB 1: CHAT INTERFACE */}
         {activeTab === "chat" && (
            <div className="bg-card border-border rounded-lg border flex flex-col min-h-0 flex-1 overflow-hidden">
             <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={chatScrollRef}>
@@ -505,6 +511,38 @@ export function CanvasWorkbench({
           <ScrollArea className="min-h-0 flex-1 rounded-lg">
             <div className="space-y-4 pr-3">
 
+              {/* NEW: Session Actions Panel */}
+              <PanelBlock title="Session Actions" icon={Sparkles}>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Timeline Step</span>
+                    <Button 
+                      size="sm" 
+                      variant={activeFrame?.is_checkpoint ? "default" : "outline"}
+                      onClick={() => toggleCheckpoint(activeFrameIndex)}
+                      title={activeFrame?.is_checkpoint ? "Remove Checkpoint" : "Mark as Checkpoint"}
+                    >
+                      <Bookmark className={cn("size-4 mr-1.5", activeFrame?.is_checkpoint ? "fill-current" : "")} /> 
+                      Step {activeFrameIndex + 1}
+                    </Button>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" size="sm" variant="outline" onClick={() => goToFrame(deckFrames.length - 1)}><RotateCcw className="size-4 mr-1.5" /> Latest</Button>
+                    <Button type="button" size="sm" variant="outline" onClick={restoreInitial}><Undo2 className="size-4 mr-1.5" /> Restore</Button>
+                    <ResourceModal sessionId={sessionId} />
+                    <Button type="button" size="sm" variant="outline" onClick={addToRecall} disabled={recalling}>
+                      {recalling ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <BookOpenCheck className="size-4 mr-1.5" />} Recall
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={exportToKnowledgeGraph} disabled={exportingGraph}>
+                      {exportingGraph ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <Network className="size-4 mr-1.5" />} Graph
+                    </Button>
+                  </div>
+                </div>
+              </PanelBlock>
+              
               <PanelBlock title="Visualization Tools" icon={Layers3}>
                 <div className="grid gap-2">
                   <Button type="button" variant="outline" size="sm" onClick={() => addVisualizationTool("invariant")}>Invariant lens</Button>

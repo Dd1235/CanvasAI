@@ -85,7 +85,7 @@ class SessionSummary(BaseModel):
     updated_at: datetime
     turn_count: int
     last_prompt: str | None = None
-
+    neuro_profile: str = "Spatial"
 
 class SessionDetail(SessionSummary):
     turns: list[SessionTurn]
@@ -339,3 +339,6 @@ class KnowledgeGraphPracticeResponse(BaseModel):
     confidence: float = Field(ge=0, le=1)
     practice_count: int
     last_practiced_at: datetime
+
+class UpdateProfileRequest(BaseModel):
+    neuro_profile: str
