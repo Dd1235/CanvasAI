@@ -18,7 +18,7 @@ inngest_client = inngest.Inngest(
     app_id=settings.inngest_app_id,
     event_key=settings.inngest_event_key,
     signing_key=settings.inngest_signing_key,
-    is_production=False,
+    is_production=True,
 )
 
 
