@@ -7,18 +7,21 @@ Currently registers a no-op so the route exists; add real workflows here.
 from __future__ import annotations
 
 import inngest
+import os
 
 from canvasai.config import get_settings
 from canvasai.knowledge_graph.pipeline import run_build_job
 
 KNOWLEDGE_GRAPH_REBUILD_EVENT = "canvasai/knowledge_graph.rebuild"
+# If Render says it's production, this becomes True. Otherwise, it defaults to False (local).
+IS_PROD = os.getenv("ENVIRONMENT") == "production"
 
 settings = get_settings()
 inngest_client = inngest.Inngest(
     app_id=settings.inngest_app_id,
     event_key=settings.inngest_event_key,
     signing_key=settings.inngest_signing_key,
-    is_production=True,
+    is_production=IS_PROD,
 )
 
 
