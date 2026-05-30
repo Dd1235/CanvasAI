@@ -15,7 +15,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=[
             "http://localhost:3000",
-            "https://your-new-vercel-project-url.vercel.app" # <--- REPLACE WITH YOUR ACTUAL VERCEL URL
+            "https://canvasai-eventually-perfect.vercel.app",
         ],
         allow_credentials=True,
         allow_methods=["*"],
