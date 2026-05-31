@@ -31,7 +31,7 @@ export function Hero() {
             friction={0.9975}
             wallBounce={0.95}
             followCursor={false}
-            colors={[0x8b5cf6, 0x6d28d9, 0x4c1d95, 0x2e1065]}
+            colors={[0x7dd3fc, 0x38bdf8, 0x60a5fa, 0x0ea5e9]}
           />
         </div>
         

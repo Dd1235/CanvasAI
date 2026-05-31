@@ -55,7 +55,14 @@ export function NewSessionDialog({ trigger, className, onCreated }: Props) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger ?? (
-          <Button size="sm" className={cn(className)} title="Create a new canvas session">
+          <Button 
+            size="sm" 
+            className={cn(
+              "bg-[#0A66C2] text-white hover:bg-[#004182] hover:shadow-[0_0_20px_rgba(10,102,194,0.4)] focus-visible:ring-2 focus-visible:ring-[#0A66C2] focus-visible:outline-none border-0 transition-all duration-300",
+              className
+            )} 
+            title="Create a new canvas session"
+          >
             <Plus className="size-4" />
             New session
           </Button>

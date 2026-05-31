@@ -647,7 +647,7 @@ export function KnowledgeGraphBoard() {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="default" onClick={() => setSprintOpen(true)}>
+              <Button variant="outline" onClick={() => setSprintOpen(true)}>
                 <Brain className="size-4" />
                 Study sprint
               </Button>
@@ -1317,48 +1317,31 @@ function RevisionPanel({
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        {/* Wrapped the inner content in MagicContainer so the spotlight works across the whole sidebar */}
-        <MagicContainer spotlightRadius={300} className="space-y-4 p-4">
+        <div className="space-y-4 p-4">
           
-          {/* STATS: Upgraded to dynamic color pills */}
+          {/* STATS */}
           <div className="grid grid-cols-2 gap-3">
             <ScorePill label="Mastery" value={masteryPct} hint="How well you can recall this topic." />
             <ScorePill label="Confidence" value={confidencePct} hint="How well-grounded this topic is in your sources." />
           </div>
 
           {/* CORE IDEA */}
-          <MagicCard 
-            enableTilt={true} 
-            enableStars={false} 
-            glowColor={neutralGlow}
-            className="rounded-xl border-black/5 dark:border-white/10 bg-card/40 p-4"
-          >
+          <div className="rounded-xl border border-black/10 dark:border-white/10 bg-card p-4 shadow-sm">
             <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-2">Core idea</p>
             <p className="text-sm leading-relaxed">{selected.summary}</p>
-          </MagicCard>
+          </div>
 
-          {/* REVISE: Removed purple/primary tints in favor of a clean blue theme */}
-          <MagicCard 
-            enableTilt={true} 
-            enableStars={true} 
-            particleCount={6} 
-            glowColor={blueGlow}
-            className="rounded-xl border-black/5 dark:border-white/10 bg-blue-500/5 dark:bg-blue-500/10 p-4"
-          >
+          {/* REVISE */}
+          <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 dark:bg-blue-500/10 p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2 text-blue-600 dark:text-blue-400">
               <BookOpenCheck className="size-4" />
               <p className="text-[10px] font-bold uppercase tracking-wider">Revise</p>
             </div>
             <p className="text-sm font-medium leading-relaxed">{selected.revision_prompt}</p>
-          </MagicCard>
+          </div>
 
           {/* TAGS */}
-          <MagicCard 
-            enableTilt={true} 
-            enableStars={false} 
-            glowColor={neutralGlow}
-            className="rounded-xl border-black/5 dark:border-white/10 bg-card/40 p-4"
-          >
+          <div className="rounded-xl border border-black/10 dark:border-white/10 bg-card p-4 shadow-sm">
             <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-3">Tags</p>
             <div className="flex flex-wrap gap-2">
               {selected.tags.map((tag) => (
@@ -1367,7 +1350,7 @@ function RevisionPanel({
                 </Badge>
               ))}
             </div>
-          </MagicCard>
+          </div>
 
           {/* RELATIONSHIPS */}
           <div className="space-y-2">
@@ -1380,19 +1363,16 @@ function RevisionPanel({
                   const neighborId = edge.source === selected.id ? edge.target : edge.source;
                   const neighbor = graph.nodes.find((node) => node.id === neighborId);
                   return (
-                    <MagicCard 
+                    <div 
                       key={edge.id} 
-                      enableTilt={true} 
-                      enableStars={false} 
-                      glowColor={neutralGlow}
-                      className="rounded-xl border-black/5 dark:border-white/10 bg-card/40 p-3"
+                      className="rounded-xl border border-black/10 dark:border-white/10 bg-card p-3 shadow-sm"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-medium">{neighbor?.title ?? neighborId}</span>
                         <Badge variant="outline" className="text-[10px]">{edge.relation}</Badge>
                       </div>
                       <p className="text-muted-foreground mt-2 text-xs leading-relaxed">{edge.evidence}</p>
-                    </MagicCard>
+                    </div>
                   );
                 })}
               </div>
@@ -1401,12 +1381,7 @@ function RevisionPanel({
 
           {/* EVIDENCE */}
           {selected.evidence.length > 0 && (
-            <MagicCard 
-              enableTilt={true} 
-              enableStars={false} 
-              glowColor={neutralGlow}
-              className="rounded-xl border-black/5 dark:border-white/10 bg-card/40 p-4"
-            >
+            <div className="rounded-xl border border-black/10 dark:border-white/10 bg-card p-4 shadow-sm">
               <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-2">Evidence</p>
               <ul className="space-y-2">
                 {selected.evidence.map((item) => (
@@ -1416,10 +1391,10 @@ function RevisionPanel({
                   </li>
                 ))}
               </ul>
-            </MagicCard>
+            </div>
           )}
           
-        </MagicContainer>
+        </div>
       </ScrollArea>
     </div>
   );
@@ -1455,12 +1430,8 @@ function ScorePill({
     <Tooltip>
       <TooltipTrigger asChild>
         <div className="h-full">
-          <MagicCard 
-            enableTilt={true} 
-            enableStars={false}
-            glowColor={glowColor}
-            // Removed the heavy hardcoded borderColor here and added the clean border classes
-            className="h-full flex flex-col items-center justify-center rounded-xl border border-black/5 dark:border-white/10 p-4 transition-colors text-center"
+          <div 
+            className="h-full flex flex-col items-center justify-center rounded-xl border border-black/10 dark:border-white/10 p-4 transition-colors text-center shadow-sm"
             style={{ backgroundColor: bgColor }}
           >
             <p className="text-foreground/70 text-[10px] font-bold uppercase tracking-wider mb-3">
@@ -1470,24 +1441,14 @@ function ScorePill({
             {/* Solid Pie Chart */}
             <div className="relative flex items-center justify-center w-20 h-20">
               <svg className="w-full h-full transform -rotate-90 rounded-full" viewBox="0 0 80 80">
-                {/* Background slice (the remaining percentage) */}
                 <circle
-                  cx="40"
-                  cy="40"
-                  r={radius}
-                  stroke="currentColor"
-                  strokeWidth="40"
-                  fill="transparent"
+                  cx="40" cy="40" r={radius}
+                  stroke="currentColor" strokeWidth="40" fill="transparent"
                   className="text-foreground/10"
                 />
-                {/* Filled Pie Slice */}
                 <circle
-                  cx="40"
-                  cy="40"
-                  r={radius}
-                  stroke={color}
-                  strokeWidth="40"
-                  fill="transparent"
+                  cx="40" cy="40" r={radius}
+                  stroke={color} strokeWidth="40" fill="transparent"
                   style={{
                     strokeDasharray: circumference,
                     strokeDashoffset: strokeDashoffset,
@@ -1496,7 +1457,6 @@ function ScorePill({
                 />
               </svg>
               
-              {/* Centered Value (with a subtle blur pill so it's readable over the solid pie) */}
               <div className="absolute inset-0 flex items-center justify-center">
                  <span 
                    className="px-2 py-0.5 rounded-md bg-background/70 backdrop-blur-sm text-sm font-bold tracking-tight shadow-sm" 
@@ -1506,7 +1466,7 @@ function ScorePill({
                  </span>
               </div>
             </div>
-          </MagicCard>
+          </div>
         </div>
       </TooltipTrigger>
       <TooltipContent>{hint}</TooltipContent>

@@ -215,7 +215,7 @@ export function DashboardHomeClient() {
           <div className="flex flex-wrap gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button asChild variant="outline">
+                <Button asChild variant="outline" className="hover:text-[#0A66C2] hover:border-[#0A66C2] hover:bg-[#0A66C2]/10 focus-visible:ring-[#0A66C2] transition-all duration-300">
                   <Link href="/dashboard/knowledge">
                     <Network className="size-4" />
                     Graph
@@ -226,7 +226,7 @@ export function DashboardHomeClient() {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button asChild variant="outline">
+                <Button asChild variant="outline" className="hover:text-[#0A66C2] hover:border-[#0A66C2] hover:bg-[#0A66C2]/10 focus-visible:ring-[#0A66C2] transition-all duration-300">
                   <Link href="/dashboard/recall">
                     <BookOpenCheck className="size-4" />
                     Recall
@@ -238,7 +238,7 @@ export function DashboardHomeClient() {
             {latestSession ? (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button asChild variant="outline">
+                  <Button asChild variant="outline" className="hover:text-[#0A66C2] hover:border-[#0A66C2] hover:bg-[#0A66C2]/10 focus-visible:ring-[#0A66C2] transition-all duration-300">
                     <Link href={`/dashboard/canvas/${latestSession.id}`}>
                       Resume latest
                       <ArrowRight className="size-4" />
@@ -279,7 +279,7 @@ export function DashboardHomeClient() {
             <BorderGlow
               glowColor="270 80 60"
               backgroundColor="hsl(var(--card))"
-              borderRadius={12}
+              borderRadius={8}
               className="flex-1 w-full"
               colors={['#700fd1', '#e0157e', '#015f88']}
             >
@@ -313,7 +313,7 @@ export function DashboardHomeClient() {
                   {latestSession ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button asChild>
+                        <Button asChild className="bg-[#0A66C2] text-white hover:bg-[#004182] hover:shadow-[0_0_20px_rgba(10,102,194,0.4)] focus-visible:ring-2 focus-visible:ring-[#0A66C2] focus-visible:outline-none border-0 transition-all duration-300">
                           <Link href={`/dashboard/canvas/${latestSession.id}`}>
                             Open canvas
                             <ArrowRight className="size-4" />
@@ -339,7 +339,7 @@ export function DashboardHomeClient() {
             <BorderGlow
               glowColor="270 80 60"
               backgroundColor="hsl(var(--card))"
-              borderRadius={12}
+              borderRadius={8}
               className="flex-1 w-full"
               colors={['#700fd1', '#e0157e', '#015f88']}
             >
@@ -362,7 +362,7 @@ export function DashboardHomeClient() {
                 <CardFooter className="mt-auto">
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="outline" asChild>
+                      <Button variant="outline" asChild className="hover:text-[#0A66C2] hover:border-[#0A66C2] hover:bg-[#0A66C2]/10 focus-visible:ring-[#0A66C2] transition-all duration-300">
                         <Link href="/dashboard/documents">Browse documents</Link>
                       </Button>
                     </TooltipTrigger>
@@ -379,7 +379,7 @@ export function DashboardHomeClient() {
         <BorderGlow
           glowColor="270 80 60"
           backgroundColor="hsl(var(--card))" /* <--- 1. SET YOUR CUSTOM BACKGROUND COLOR HERE */
-          borderRadius={12}
+          borderRadius={8}
           className="w-full mt-4"
           colors={['#700fd1', '#e0157e', '#015f88']}
         >
@@ -405,7 +405,7 @@ export function DashboardHomeClient() {
                   : "No sessions yet. Start one above."}
               </div>
             ) : (
-              /* 👇 Added onMouseLeave to the wrapper div 👇 */
+              /*  Added onMouseLeave to the wrapper div  */
               <div 
                 className="relative w-full h-[500px] bg-transparent overflow-hidden rounded-b-xl"
                 onMouseLeave={() => setExpandedInstanceId(null)} 
