@@ -276,7 +276,7 @@ export function KnowledgeGraphBoard() {
   }, []);
 
   const isDark = mounted && (theme === "dark" || (theme === "system" && systemTheme === "dark"));
-  const dynamicDotSize = isDark ? 1.5 : 0.5;
+  const dynamicDotSize = isDark ? 1.2 : 0.6;
 
   React.useEffect(() => {
     queueMicrotask(() => {
