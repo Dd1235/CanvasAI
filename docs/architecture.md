@@ -1,4 +1,4 @@
-# CanvasAI System Architecture
+# CanvasAI System Architecture 
 
 CanvasAI decouples "teaching" from "layout rendering" to guarantee stable, visual-first UI components.
 
