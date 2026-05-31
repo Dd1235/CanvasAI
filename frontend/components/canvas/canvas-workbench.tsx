@@ -484,7 +484,7 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
       {/* 1. NEW INTERACTIVE DOT GRID BACKGROUND */}
       <div className="absolute inset-0 z-0">
         <DotGrid
-          dotSize={3}
+          dotSize={0.3}
           gap={24}
           baseColor="#27272a" // Subtle zinc-800 to match dark mode
           activeColor="#c084fc" // Purple interactive glow
