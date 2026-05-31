@@ -1,38 +1,33 @@
-# CanvasAI Backend
+# CanvasAI Engine (Backend)
 
-FastAPI + LangGraph backend for CanvasAI.
+The intelligence layer for CanvasAI. Built for extreme low latency and resilience using FastAPI, LangGraph, and WebSockets.
 
-## Run
+## 🛠 Tech Stack
+* **Runtime:** Python 3.12+ (Managed via `uv`)
+* **API:** FastAPI + Uvicorn ASGI
+* **Orchestration:** LangGraph (StateGraph multi-agent routing)
+* **LLM:** Google Gemini 1.5 Flash (`gemini_provider.py`)
+* **Background Jobs:** Inngest
+* **Schema Validation:** Pydantic (Strict Structured Outputs)
+
+## 🚀 Setup & Execution
+
+We use `uv` for lightning-fast package management.
 
 ```bash
+# 1. Clone environment
 cp .env.example .env
+
+# 2. Sync dependencies
 uv sync
-uv run uvicorn canvasai.main:app --reload
+
+# 3. Start the server
+uv run uvicorn canvasai.main:app --reload --port 8000
+
 ```
 
-## Core Endpoints
+## 🧠 Core Architecture Rules
 
-- `GET /health`
-- `GET /sessions`
-- `POST /sessions`
-- `GET /sessions/{session_id}/history`
-- `POST /sessions/{session_id}/revert/{turn_index}`
-- `WS /ws/sessions/{session_id}`
-- `POST /chat/sessions`
-- `GET /chat/sessions/{session_id}/messages`
-- `POST /chat/sessions/{session_id}/messages`
-- `GET /active-recall/cards`
-- `GET /active-recall/sessions`
-- `POST /active-recall/from-session/{session_id}`
-- `POST /active-recall/cards/{card_id}/review`
-
-Session, chat, and active recall storage are currently in-memory. Frontend auth
-uses Supabase, and the backend has a lazy Supabase client, but the backend
-stores still need Supabase-backed implementations once the schema is ready.
-
-## LLM
-
-Set `OPENAI_API_KEY` and optionally `OPENAI_MODEL`. Without a key, the provider
-returns deterministic stub text so local smoke tests still run. With a key, the
-agents call the OpenAI Chat Completions API; JSON parsing fallbacks keep canvas
-and recall flows usable when model output is invalid.
+* **The Code Array Rule:** To prevent LLM grammar crashes with `\n` characters in Python/C++ scripts, the `code` field in Pydantic is defined strictly as `list[str]`. The frontend maps this to `<pre>` blocks natively.
+* **Python Text Injection:** To prevent generation timeouts, `ai_response` and `step_title` properties are injected into the final payload natively via Python in `schema_enforcer.py`, bypassing the final heavy JSON LLM step.
+* **Graceful Degradation:** The WebSocket pipeline handles provider failures gracefully. If an API key fails, it returns deterministic stub outputs via `error` frames without dropping the client connection.
