@@ -3,6 +3,7 @@
 import * as React from "react";
 import {
   Brain,
+  ClipboardList,
   FileSearch,
   Network,
   Sparkles,
@@ -12,9 +13,10 @@ import {
 import { cn } from "@/lib/utils";
 
 // Visualises the multi-agent canvas turn: a packet hops left→right across
-// four agents (Retrieval → Synthesizer → Architect → Schema Enforcer),
-// then the canvas tile lights up. Pure CSS animations + shadcn tokens, so
-// dropping a tweakcn theme into globals.css re-skins everything.
+// five agents (Retrieval → Synthesizer → Curriculum Planner → Architect →
+// Schema Enforcer), where the planner fires only on new topics, then the
+// canvas tile lights up. Pure CSS animations + shadcn tokens, so dropping a
+// tweakcn theme into globals.css re-skins everything.
 
 const AGENTS = [
   {
@@ -26,6 +28,12 @@ const AGENTS = [
     icon: Brain,
     label: "Synthesizer",
     detail: "Reads the prompt + current canvas state into a directive.",
+  },
+  {
+    icon: ClipboardList,
+    label: "Curriculum Planner",
+    detail: "Maps a step-by-step lesson roadmap for new topics.",
+    conditional: true,
   },
   {
     icon: Workflow,
@@ -51,17 +59,17 @@ export function AgentPipeline() {
             Multi-agent canvas turn
           </span>
           <h2 className="text-balance mt-3 text-3xl font-semibold md:text-4xl">
-            Four specialised agents, one streaming pipeline
+            Five specialised agents, one streaming pipeline
           </h2>
           <p className="text-muted-foreground mx-auto mt-3 max-w-2xl text-sm md:text-base">
             Each prompt becomes a directed sequence — retrieval grounds the request, the
-            synthesizer compresses intent, the architect chooses a teaching shape, and the
-            schema enforcer emits canvas-ready JSON. You see every hand-off live over the
-            WebSocket.
+            synthesizer compresses intent, a curriculum planner maps the roadmap when a new
+            topic appears, the architect chooses a teaching shape, and the schema enforcer
+            emits canvas-ready JSON. You see every hand-off live over the WebSocket.
           </p>
         </div>
 
-        <div className="relative mt-12 grid gap-4 md:grid-cols-[repeat(4,minmax(0,1fr))_auto] md:items-stretch">
+        <div className="relative mt-12 grid gap-4 md:grid-cols-[repeat(5,minmax(0,1fr))_auto] md:items-stretch">
           {AGENTS.map((agent, index) => (
             <AgentCard key={agent.label} agent={agent} index={index} />
           ))}
@@ -134,9 +142,9 @@ function AgentCard({
   index: number;
 }) {
   const Icon = agent.icon;
-  // Stagger the pulse so the four cards visibly fire in sequence over a
-  // ~4.8s cycle (1.2s per agent).
-  const delay = index * 1.2;
+  // Stagger the pulse so the five cards visibly fire in sequence over a
+  // ~4.8s cycle.
+  const delay = index * 0.96;
   return (
     <div className="relative flex flex-col">
       <div
@@ -154,6 +162,11 @@ function AgentCard({
           <div className="text-muted-foreground text-[11px] font-medium uppercase tracking-wide">
             Agent {index}
           </div>
+          {"conditional" in agent && agent.conditional ? (
+            <span className="border-border text-muted-foreground ml-auto rounded-full border px-2 py-0.5 text-[10px] font-medium">
+              Conditional
+            </span>
+          ) : null}
         </div>
         <div className="text-sm font-semibold">{agent.label}</div>
         <p className="text-muted-foreground text-xs leading-snug">{agent.detail}</p>
