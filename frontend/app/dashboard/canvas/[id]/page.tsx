@@ -48,10 +48,10 @@ export default async function CanvasPage({ params }: { params: Params }) {
             Live AI workspace. Real-time LangGraph processing.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">Active</Badge>
           <Badge variant="outline">Connected</Badge>
-        </div>
+        </div> */}
       </div>
       <div className="min-h-0 flex-1">
         <CanvasWorkbench sessionId={id} topic={realTitle} initialProfile={sessionData?.neuro_profile}/>

@@ -622,7 +622,7 @@ export function KnowledgeGraphBoard() {
       <style dangerouslySetInnerHTML={{ __html: PULSE_KEYFRAMES }} />
       <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0 space-y-2">
-          <Badge variant="default">Live graph</Badge>
+          <Badge variant="outline">Live graph</Badge>
           <Badge variant="outline">
             {graph.nodes.length} nodes / {graph.edges.length} edges
           </Badge>
@@ -805,7 +805,7 @@ export function KnowledgeGraphBoard() {
                       </Button>
                       <Button
                         size="sm"
-                        variant="default"
+                        variant="outline"
                         disabled={isPracticing}
                         onClick={() => void handlePracticed(item)}
                       >
@@ -867,7 +867,11 @@ export function KnowledgeGraphBoard() {
                   <Button type="button" variant="outline" onClick={() => setFactsOpen(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={!factsText.trim() || extracting}>
+                  <Button 
+                    type="submit" 
+                    className="bg-[#0A66C2] text-white hover:bg-[#004182] disabled:opacity-50 disabled:bg-[#0A66C2]/40 border-0 transition-all" 
+                    disabled={!factsText.trim() || extracting}
+                  >
                     {extracting ? (
                       <Loader2 className="size-4 animate-spin" />
                     ) : (
