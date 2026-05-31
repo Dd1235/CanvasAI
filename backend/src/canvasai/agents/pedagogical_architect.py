@@ -1,10 +1,11 @@
 import json
 from typing import Any, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from canvasai.agents.base import AgentBase
 
 # We use structured output here to split the conversational response from the technical script
 class ArchitectOutput(BaseModel):
+    step_title: str = Field(description="A 2-9 word summary of the learning journey in this step")
     ai_chat_response: str
     visual_script: str
     advance_step: bool
@@ -102,6 +103,7 @@ class PedagogicalArchitect(AgentBase):
             final_script += f"\nUPDATE node with type 'lesson_plan' to highlight active_step: {new_step_idx}"
 
         return {
+            "step_title": output.step_title,
             "ai_response_draft": output.ai_chat_response,
             "visual_script": final_script,
             "current_step_index": new_step_idx, # Mutates the LangGraph state

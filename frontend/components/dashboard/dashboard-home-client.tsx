@@ -450,11 +450,11 @@ function MetricCard({
       className="h-full"
     >
       <BorderGlow
-        glowColor="270 80 60" // A nice AI-themed purple glow
-        backgroundColor="hsl(var(--card))" // Shadcn dark mode default background
+        glowColor="210 100 50" // A clean blue
+        backgroundColor="hsl(var(--card))"
         borderRadius={12}
-        className="h-full w-full"
-        colors={['#c084fc', '#f472b6', '#38bdf8']}
+        className="flex-1 w-full"
+        colors={['#3b82f6', '#06b6d4', '#6366f1']} // Blue, Cyan, Indigo
       >
         <Card className="h-full bg-transparent border-0 shadow-none">
           <CardHeader className="flex-row items-center justify-between space-y-0">

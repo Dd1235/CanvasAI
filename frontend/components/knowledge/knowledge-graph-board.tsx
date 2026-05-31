@@ -10,6 +10,7 @@ import {
   type Edge,
   type Node,
 } from "@xyflow/react";
+import { useTheme } from "next-themes";
 import {
   ArrowLeft,
   Brain,
@@ -31,7 +32,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { MagicContainer, MagicCard } from "@/components/ui/magic-bento";
-import Dock from "@/components/ui/dock";
 import { LayoutGrid } from "lucide-react";
 import DotGrid from "@/components/ui/dot-grid";
 import ChromaGrid from "@/components/ui/ChromaGrid";
@@ -219,6 +219,8 @@ const PRINCIPLE_META: Record<
 };
 
 export function KnowledgeGraphBoard() {
+  const { theme, systemTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
   const [graph, setGraph] = React.useState<KnowledgeGraphPayload>(EMPTY_GRAPH);
   const [loading, setLoading] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
@@ -268,6 +270,13 @@ export function KnowledgeGraphBoard() {
       setLoaded(true);
     }
   }, []);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDark = mounted && (theme === "dark" || (theme === "system" && systemTheme === "dark"));
+  const dynamicDotSize = isDark ? 1.5 : 0.5;
 
   React.useEffect(() => {
     queueMicrotask(() => {
@@ -690,10 +699,10 @@ export function KnowledgeGraphBoard() {
             {/* NEW INTERACTIVE DOT GRID BACKGROUND */}
             <div className="absolute inset-0 z-0">
               <DotGrid
-                dotSize={3}
+                dotSize={dynamicDotSize} /* <--- Updated here */
                 gap={24}
-                baseColor="#27272a" /* subtle zinc-800 for dark mode */
-                activeColor="#c084fc" /* purple matching your border glows */
+                baseColor="#27272a" 
+                activeColor="#c084fc" 
                 proximity={120}
                 shockRadius={250}
                 shockStrength={5}
@@ -701,7 +710,6 @@ export function KnowledgeGraphBoard() {
                 returnDuration={1.7}
               />
             </div>
-
             {/* MAIN CONTENT LAYER (Z-10 sits on top of the dots) */}
             <div className="relative z-10 w-full h-full flex-1">
               
@@ -741,13 +749,6 @@ export function KnowledgeGraphBoard() {
                   </div>
                 </div>
               ) : null}
-
-              {/* THE DOCK (Automatically re-centers 3 items) */}
-              <div className="absolute bottom-6 left-0 w-full pointer-events-none flex justify-center z-50">
-                <div className="pointer-events-auto">
-                  <Dock items={dockItems} />
-                </div>
-              </div>
             </div>
           </section>
       </div>
@@ -1279,6 +1280,20 @@ function RevisionPanel({
   relatedEdges: KnowledgeGraphEdge[];
   onClose: () => void;
 }) {
+  // 1. Bring in the theme hook to make the glow color adapt perfectly
+  const { theme, systemTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
+  
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDark = mounted && (theme === "dark" || (theme === "system" && systemTheme === "dark"));
+  
+  // 2. Define clean RGB glow colors instead of defaulting to muddy grey/purple
+  const neutralGlow = isDark ? "255,255,255" : "0,0,0";
+  const blueGlow = isDark ? "59,130,246" : "37,99,235";
+
   if (!selected) return null;
 
   const masteryPct = Math.round(selected.mastery * 100);
@@ -1286,7 +1301,7 @@ function RevisionPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background/50">
-      <div className="flex items-start justify-between gap-3 border-b p-4">
+      <div className="flex items-start justify-between gap-3 border-b border-black/5 dark:border-white/10 p-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Network className="size-4 text-primary" />
@@ -1312,14 +1327,25 @@ function RevisionPanel({
           </div>
 
           {/* CORE IDEA */}
-          <MagicCard enableTilt={true} enableStars={false} className="rounded-xl border bg-card/40 p-4">
+          <MagicCard 
+            enableTilt={true} 
+            enableStars={false} 
+            glowColor={neutralGlow}
+            className="rounded-xl border-black/5 dark:border-white/10 bg-card/40 p-4"
+          >
             <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-2">Core idea</p>
             <p className="text-sm leading-relaxed">{selected.summary}</p>
           </MagicCard>
 
-          {/* REVISE: Enabled stars here to draw attention to the action item */}
-          <MagicCard enableTilt={true} enableStars={true} particleCount={6} className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-            <div className="flex items-center gap-2 mb-2 text-primary">
+          {/* REVISE: Removed purple/primary tints in favor of a clean blue theme */}
+          <MagicCard 
+            enableTilt={true} 
+            enableStars={true} 
+            particleCount={6} 
+            glowColor={blueGlow}
+            className="rounded-xl border-black/5 dark:border-white/10 bg-blue-500/5 dark:bg-blue-500/10 p-4"
+          >
+            <div className="flex items-center gap-2 mb-2 text-blue-600 dark:text-blue-400">
               <BookOpenCheck className="size-4" />
               <p className="text-[10px] font-bold uppercase tracking-wider">Revise</p>
             </div>
@@ -1327,7 +1353,12 @@ function RevisionPanel({
           </MagicCard>
 
           {/* TAGS */}
-          <MagicCard enableTilt={true} enableStars={false} className="rounded-xl border bg-card/40 p-4">
+          <MagicCard 
+            enableTilt={true} 
+            enableStars={false} 
+            glowColor={neutralGlow}
+            className="rounded-xl border-black/5 dark:border-white/10 bg-card/40 p-4"
+          >
             <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-3">Tags</p>
             <div className="flex flex-wrap gap-2">
               {selected.tags.map((tag) => (
@@ -1349,7 +1380,13 @@ function RevisionPanel({
                   const neighborId = edge.source === selected.id ? edge.target : edge.source;
                   const neighbor = graph.nodes.find((node) => node.id === neighborId);
                   return (
-                    <MagicCard key={edge.id} enableTilt={true} enableStars={false} className="rounded-xl border bg-card/40 p-3">
+                    <MagicCard 
+                      key={edge.id} 
+                      enableTilt={true} 
+                      enableStars={false} 
+                      glowColor={neutralGlow}
+                      className="rounded-xl border-black/5 dark:border-white/10 bg-card/40 p-3"
+                    >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-medium">{neighbor?.title ?? neighborId}</span>
                         <Badge variant="outline" className="text-[10px]">{edge.relation}</Badge>
@@ -1364,7 +1401,12 @@ function RevisionPanel({
 
           {/* EVIDENCE */}
           {selected.evidence.length > 0 && (
-            <MagicCard enableTilt={true} enableStars={false} className="rounded-xl border bg-card/40 p-4">
+            <MagicCard 
+              enableTilt={true} 
+              enableStars={false} 
+              glowColor={neutralGlow}
+              className="rounded-xl border-black/5 dark:border-white/10 bg-card/40 p-4"
+            >
               <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-2">Evidence</p>
               <ul className="space-y-2">
                 {selected.evidence.map((item) => (
@@ -1417,8 +1459,9 @@ function ScorePill({
             enableTilt={true} 
             enableStars={false}
             glowColor={glowColor}
-            className="h-full flex flex-col items-center justify-center rounded-xl border p-4 transition-colors text-center"
-            style={{ backgroundColor: bgColor, borderColor: `${color}30` }}
+            // Removed the heavy hardcoded borderColor here and added the clean border classes
+            className="h-full flex flex-col items-center justify-center rounded-xl border border-black/5 dark:border-white/10 p-4 transition-colors text-center"
+            style={{ backgroundColor: bgColor }}
           >
             <p className="text-foreground/70 text-[10px] font-bold uppercase tracking-wider mb-3">
               {label}

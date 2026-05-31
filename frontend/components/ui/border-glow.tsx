@@ -26,16 +26,17 @@ function parseHSL(hslStr: string): { h: number; s: number; l: number } {
 function buildBoxShadow(glowColor: string, intensity: number): string {
   const { h, s, l } = parseHSL(glowColor);
   const base = `${h}deg ${s}% ${l}%`;
-  const layers: [number, number, number, number, number, boolean][] = [
-    [0, 0, 0, 1, 100, true], [0, 0, 1, 0, 60, true], [0, 0, 3, 0, 50, true],
-    [0, 0, 6, 0, 40, true], [0, 0, 15, 0, 30, true], [0, 0, 25, 2, 20, true],
-    [0, 0, 50, 2, 10, true],
-    [0, 0, 1, 0, 60, false], [0, 0, 3, 0, 50, false], [0, 0, 6, 0, 40, false],
-    [0, 0, 15, 0, 30, false], [0, 0, 25, 2, 20, false], [0, 0, 50, 2, 10, false],
+  
+  // Removed the 'inset' layers. This prevents the messy colored shadows
+  // from bleeding into the inside of the card.
+  const layers: [number, number, number, number, number][] = [
+    [0, 0, 1, 0, 60], [0, 0, 3, 0, 50], [0, 0, 6, 0, 40],
+    [0, 0, 15, 0, 30], [0, 0, 25, 2, 20], [0, 0, 50, 2, 10],
   ];
-  return layers.map(([x, y, blur, spread, alpha, inset]) => {
+  
+  return layers.map(([x, y, blur, spread, alpha]) => {
     const a = Math.min(alpha * intensity, 100);
-    return `${inset ? 'inset ' : ''}${x}px ${y}px ${blur}px ${spread}px hsl(${base} / ${a}%)`;
+    return `${x}px ${y}px ${blur}px ${spread}px hsl(${base} / ${a}%)`;
   }).join(', ');
 }
 
@@ -169,12 +170,13 @@ const BorderGlow: React.FC<BorderGlowProps> = ({
       onPointerMove={handlePointerMove}
       onPointerEnter={() => setIsHovered(true)}
       onPointerLeave={() => setIsHovered(false)}
-      className={`relative grid isolate border border-white/15 ${className}`}
+      // Updated border to adapt to light/dark themes
+      className={`relative grid isolate border border-black/5 dark:border-white/10 ${className}`}
       style={{
         background: backgroundColor,
         borderRadius: `${borderRadius}px`,
         transform: 'translate3d(0, 0, 0.01px)',
-        boxShadow: 'rgba(0,0,0,0.1) 0 1px 2px, rgba(0,0,0,0.1) 0 2px 4px, rgba(0,0,0,0.1) 0 4px 8px, rgba(0,0,0,0.1) 0 8px 16px, rgba(0,0,0,0.1) 0 16px 32px, rgba(0,0,0,0.1) 0 32px 64px',
+        // REMOVED the hardcoded rgba(0,0,0,0.1) boxShadow here
       }}
     >
       {/* mesh gradient border */}
@@ -221,7 +223,7 @@ const BorderGlow: React.FC<BorderGlowProps> = ({
           maskComposite: 'subtract, add, add, add, add, add',
           WebkitMaskComposite: 'source-out, source-over, source-over, source-over, source-over, source-over',
           opacity: borderOpacity * fillOpacity,
-          mixBlendMode: 'soft-light',
+          // Removed mixBlendMode: 'soft-light' so it doesn't wash out in light mode
           transition: isVisible ? 'opacity 0.25s ease-out' : 'opacity 0.75s ease-in-out',
         } as React.CSSProperties}
       />
@@ -234,7 +236,7 @@ const BorderGlow: React.FC<BorderGlowProps> = ({
           maskImage: `conic-gradient(from ${angleDeg} at center, black 2.5%, transparent 10%, transparent 90%, black 97.5%)`,
           WebkitMaskImage: `conic-gradient(from ${angleDeg} at center, black 2.5%, transparent 10%, transparent 90%, black 97.5%)`,
           opacity: glowOpacity,
-          mixBlendMode: 'plus-lighter',
+          // Removed mixBlendMode: 'plus-lighter' so the glow actually shows on white backgrounds
           transition: isVisible ? 'opacity 0.25s ease-out' : 'opacity 0.75s ease-in-out',
         } as React.CSSProperties}
       >

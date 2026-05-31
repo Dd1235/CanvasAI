@@ -71,6 +71,7 @@ class SchemaEnforcer(AgentBase):
         # We aggressively overwrite whatever the Enforcer tried to put here
         # with the exact, perfect draft from the Architect.
         final_payload_dict["ai_response"] = ai_response 
+        final_payload_dict["step_title"] = state.get("step_title", "Canvas Updated")
 
         return {
             "output_payload": final_payload_dict,

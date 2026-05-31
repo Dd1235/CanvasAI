@@ -17,10 +17,7 @@ import {
   Brain,
   BookOpenCheck,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   FileSearch,
-  History,
   Layers3,
   Loader2,
   Network,
@@ -33,9 +30,7 @@ import {
   Bot,
   MessageSquare,
   Wrench,
-  Bookmark,
-  GitBranch,
-  Undo2,
+  GitCommitHorizontal
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -61,8 +56,6 @@ import {
   backendWebSocketUrl,
   buildRecallFromSession,
   exportSessionToKnowledgeGraph,
-  getCanvasHistory,
-  toggleSessionCheckpoint,
   revertSessionToTurn,
   branchSessionFromTurn,
   updateSessionProfile,
@@ -82,8 +75,8 @@ import type {
   CanvasEdge,
   CanvasNode,
   DemoTurn,
-  DemoDocument,
   SessionTurn,
+  CanvasPayload,
 } from "@/lib/canvasai-types";
 import { cn } from "@/lib/utils";
 import { MemoryBlock } from "./nodes/MemoryBlock";
@@ -93,15 +86,12 @@ import CodeStepperNode from "./nodes/CodeStepperNode";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+// NEW: Import the timeline
+import { VerticalTimeline } from "./timeline/vertical-timeline";
+
 type Props = {
   sessionId: string;
   topic: string;
-  initialPrompt: string;
-  initialNodes: CanvasNode[];
-  initialEdges: CanvasEdge[];
-  initialTrace: AgentTrace[];
-  initialTurns: DemoTurn[];
-  documents: DemoDocument[];
   initialProfile?: string;
 };
 
@@ -114,6 +104,7 @@ type BackendPayloadFrame = {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
   ai_response?: string;
+  step_title?: string;
 };
 type BackendFrame =
   | BackendStatusFrame
@@ -121,8 +112,7 @@ type BackendFrame =
   | { type: "error"; message: string };
 
 type DeckFrame = DemoTurn & {
-  is_checkpoint: boolean;
-  payload: { nodes: CanvasNode[]; edges: CanvasEdge[] };
+  payload: CanvasPayload & { step_title?: string };
 };
 
 const nodeTypes = {
@@ -139,8 +129,7 @@ function framesFromHistory(historyTurns: SessionTurn[]): DeckFrame[] {
     summary: turn.payload?.ai_response || "Canvas updated.",
     nodes: turn.payload.nodes.length,
     edges: turn.payload.edges.length,
-    is_checkpoint: turn.is_checkpoint ?? false,
-    payload: turn.payload,
+    payload: turn.payload as any,
   }));
 }
 
@@ -170,9 +159,9 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
 
   // Auth & UI State
   const [token, setToken] = React.useState<string | null>(null);
-  const [activeTab, setActiveTab] = React.useState<"chat" | "tools">("chat");
+  // NEW: Added timeline tab
+  const [activeTab, setActiveTab] = React.useState<"chat" | "tools" | "timeline">("chat");
 
-  const activeFrame = deckFrames[activeFrameIndex];
   const chatScrollRef = React.useRef<HTMLDivElement>(null);
   const hydratedSessionRef = React.useRef<string | null>(null);
 
@@ -257,13 +246,13 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
   );
 
   const appendFrame = React.useCallback(
-    (frame: Omit<DeckFrame, "index" | "is_checkpoint">) => {
+    (frame: Omit<DeckFrame, "index">) => {
       let nextLength = 0;
       setDeckFrames((currentFrames) => {
         nextLength = currentFrames.length + 1;
         const updated: DeckFrame[] = [
           ...currentFrames,
-          { ...frame, index: currentFrames.length, is_checkpoint: false },
+          { ...frame, index: currentFrames.length },
         ];
         // Mirror into the cache so re-opening the canvas re-hydrates.
         setCached<CanvasHistory>(sessionHistoryKey(sessionId), {
@@ -272,7 +261,6 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
             payload: { ...f.payload, ai_response: f.summary },
             turn_index: f.index,
             created_at: new Date().toISOString(),
-            is_checkpoint: f.is_checkpoint,
           })),
         });
         return updated;
@@ -293,32 +281,9 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
     [deckFrames, setEdges, setNodes],
   );
 
-  const toggleCheckpoint = async (index: number) => {
-    const frame = deckFrames[index];
-    if (!frame) return;
-
-    const newStatus = !frame.is_checkpoint;
-
-    // Optimistic UI update
-    setDeckFrames((frames) =>
-      frames.map((f) => (f.index === index ? { ...f, is_checkpoint: newStatus } : f)),
-    );
-    toast.success(newStatus ? "Checkpoint saved" : "Checkpoint removed");
-
-    try {
-      await toggleSessionCheckpoint(sessionId, index, newStatus);
-    } catch {
-      toast.error("Failed to save checkpoint to database.");
-      // Revert optimistic update
-      setDeckFrames((frames) =>
-        frames.map((f) => (f.index === index ? { ...f, is_checkpoint: !newStatus } : f)),
-      );
-    }
-  };
-
   const handleRevert = async (index: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Are you sure? This will permanently delete all turns after this checkpoint."))
+    if (!confirm("Are you sure? This will permanently delete all turns after this point."))
       return;
 
     try {
@@ -399,7 +364,12 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
               summary: frame.ai_response || "Canvas updated.",
               nodes: frame.nodes.length,
               edges: frame.edges.length,
-              payload: { nodes: frame.nodes, edges: frame.edges },
+              payload: { 
+                nodes: frame.nodes, 
+                edges: frame.edges, 
+                step_title: frame.step_title,
+                ai_response: frame.ai_response || "Canvas updated." // <--- ADD THIS
+              },
             });
             toast.success("Canvas updated");
             socket.close();
@@ -422,9 +392,7 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
     }
   };
 
-  const checkpointFrames = deckFrames.filter((f) => f.is_checkpoint).reverse();
-
-  const addVisualizationTool = (kind: "invariant" | "probe" | "checkpoint") => {
+  const addVisualizationTool = (kind: "invariant" | "probe") => {
     const nextIndex = nodes.length + 1;
     const toolCopy = {
       invariant: {
@@ -434,11 +402,7 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
       probe: {
         label: "Misconception probe",
         detail: "Ask what a learner might incorrectly infer from this diagram.",
-      },
-      checkpoint: {
-        label: "Step checkpoint",
-        detail: "Pause here and predict the next canvas mutation before revealing it.",
-      },
+      }
     }[kind];
     const source = nodes[0]?.id;
     const newNode: CanvasNode = {
@@ -456,7 +420,6 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
           source,
           target: newNode.id,
           type: "smoothstep",
-          animated: kind === "checkpoint",
           label: kind,
         },
       ]);
@@ -521,7 +484,7 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
       {/* 1. NEW INTERACTIVE DOT GRID BACKGROUND */}
       <div className="absolute inset-0 z-0">
         <DotGrid
-          dotSize={3}
+          dotSize={0.3}
           gap={24}
           baseColor="#27272a" // Subtle zinc-800 to match dark mode
           activeColor="#c084fc" // Purple interactive glow
@@ -560,33 +523,35 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
   {/* Right Sidebar Area */}
   const sidebarArea = (
     <aside className="flex h-full min-h-0 flex-col gap-4">
-      {/* YOUR CHANGE: Neuroprofile Selector at the top */}
-      <div className="bg-card border-border shrink-0 rounded-lg border p-4">
-        <p className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">Cognitive Profile</p>
-        <div className="bg-muted/50 flex rounded-lg p-1">
-          {PROFILES.map((p) => (
-            <button
-              key={p}
-              onClick={() => handleProfileChange(p)}
-              className={cn(
-                "flex-1 rounded-md py-1.5 text-xs font-medium transition-all",
-                profile === p
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted"
-              )}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
+      {/* Conditionally hide Cognitive Profile when Timeline is active to give it full height */}
+      {activeTab !== "timeline" && (
+        <div className="bg-card border-border shrink-0 rounded-lg border p-4">
+          <p className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">Cognitive Profile</p>
+          <div className="bg-muted/50 flex rounded-lg p-1">
+            {PROFILES.map((p) => (
+              <button
+                key={p}
+                onClick={() => handleProfileChange(p)}
+                className={cn(
+                  "flex-1 rounded-md py-1.5 text-xs font-medium transition-all",
+                  profile === p
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted"
+                )}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
         <p className="text-muted-foreground mt-2 text-center text-[10px]">
           {profile === "Spatial" && "Maximized visual structure and data flow."}
           {profile === "Micro-step" && "Hyper-focused, linear step-by-step execution."}
           {profile === "Low-stim" && "Minimalist layout with reduced visual noise."}
         </p>
-      </div>
+        </div>
+      )}
 
-      {/* Tab Toggle */}
+      {/* 3-Button Tab Toggle */}
       <div className="bg-muted/50 flex shrink-0 rounded-lg p-1">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -594,9 +559,7 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
               onClick={() => setActiveTab("chat")}
               className={cn(
                 "flex flex-1 items-center justify-center gap-2 rounded-md py-1.5 text-sm font-medium transition-colors",
-                activeTab === "chat"
-                  ? "bg-background shadow-sm"
-                  : "text-muted-foreground hover:bg-muted",
+                activeTab === "chat" ? "bg-background shadow-sm" : "text-muted-foreground hover:bg-muted"
               )}
             >
               <MessageSquare className="size-4" /> Chat
@@ -604,31 +567,42 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
           </TooltipTrigger>
           <TooltipContent>Conversation with the canvas tutor</TooltipContent>
         </Tooltip>
+        
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               onClick={() => setActiveTab("tools")}
               className={cn(
                 "flex flex-1 items-center justify-center gap-2 rounded-md py-1.5 text-sm font-medium transition-colors",
-                activeTab === "tools"
-                  ? "bg-background shadow-sm"
-                  : "text-muted-foreground hover:bg-muted",
+                activeTab === "tools" ? "bg-background shadow-sm" : "text-muted-foreground hover:bg-muted"
               )}
             >
-              <Wrench className="size-4" /> Workbench
+              <Wrench className="size-4" /> Tools
             </button>
           </TooltipTrigger>
-          <TooltipContent>Checkpoints, agent trace, and visualization tools</TooltipContent>
+          <TooltipContent>Exports, agent trace, and visualizations</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => setActiveTab("timeline")}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-2 rounded-md py-1.5 text-sm font-medium transition-colors",
+                activeTab === "timeline" ? "bg-background shadow-sm" : "text-muted-foreground hover:bg-muted"
+              )}
+            >
+              <GitCommitHorizontal className="size-4" /> Timeline
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Interactive Learning Journey</TooltipContent>
         </Tooltip>
       </div>
 
       {/* TAB 1: CHAT INTERFACE */}
       {activeTab === "chat" && (
         <div className="bg-card border-border flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
-          <div
-            className="flex-1 space-y-4 overflow-y-auto p-4"
-            ref={chatScrollRef}
-          >
+          <div className="flex-1 space-y-4 overflow-y-auto p-4" ref={chatScrollRef}>
             {deckFrames.length === 0 ? (
               <div className="text-muted-foreground py-12 text-center text-sm">
                 {historyQuery.isLoading
@@ -648,9 +622,7 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
                     <Bot className="size-4" />
                   </div>
                   <div className="bg-muted text-foreground border-border rounded-2xl rounded-tl-none border px-4 py-2 text-sm">
-                    <p className="text-muted-foreground mb-1 text-xs font-medium">
-                      Canvas Updated
-                    </p>
+                    <p className="text-muted-foreground mb-1 text-xs font-medium">Canvas Updated</p>
                     <div className="prose prose-invert prose-sm prose-p:leading-snug prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800 max-w-none">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{frame.summary}</ReactMarkdown>
                     </div>
@@ -701,7 +673,7 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
                     ) : (
                       <Send className="size-4" />
                     )}
-                  </Button>
+              </Button>
                 </TooltipTrigger>
                 <TooltipContent>Send prompt to the canvas engine</TooltipContent>
               </Tooltip>
@@ -718,34 +690,6 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
             {/* YOUR CHANGE: The Consolidated Session Actions Panel */}
             <PanelBlock title="Session Actions" icon={Sparkles}>
               <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-sm font-medium">Timeline Step</span>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="sm"
-                        variant={activeFrame?.is_checkpoint ? "default" : "outline"}
-                        onClick={() => toggleCheckpoint(activeFrameIndex)}
-                      >
-                        <Bookmark
-                          className={cn(
-                            "mr-1.5 size-4",
-                            activeFrame?.is_checkpoint ? "fill-current" : "",
-                          )}
-                        />
-                        Step {activeFrameIndex + 1}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {activeFrame?.is_checkpoint
-                        ? "Remove checkpoint from this step"
-                        : "Bookmark this step so you can revert or branch from it later"}
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-
-                <Separator />
-
                 <div className="flex flex-wrap gap-2">
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -756,8 +700,8 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
                         onClick={() => goToFrame(deckFrames.length - 1)}
                         disabled={!deckFrames.length}
                       >
-                        <RotateCcw className="mr-1.5 size-4" /> Latest
-                      </Button>
+                    <RotateCcw className="mr-1.5 size-4" /> Latest
+                  </Button>
                     </TooltipTrigger>
                     <TooltipContent>Jump to the most recent canvas turn</TooltipContent>
                   </Tooltip>
@@ -765,7 +709,7 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span>
-                        <ResourceModal sessionId={sessionId} />
+                  <ResourceModal sessionId={sessionId} />
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>Add a PDF, link, or note as grounding</TooltipContent>
@@ -786,7 +730,7 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
                           <BookOpenCheck className="mr-1.5 size-4" />
                         )}{" "}
                         Recall
-                      </Button>
+                  </Button>
                     </TooltipTrigger>
                     <TooltipContent>Generate spaced-repetition cards from this canvas</TooltipContent>
                   </Tooltip>
@@ -806,7 +750,7 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
                           <Network className="mr-1.5 size-4" />
                         )}{" "}
                         Graph
-                      </Button>
+                  </Button>
                     </TooltipTrigger>
                     <TooltipContent>Merge this canvas into your knowledge graph</TooltipContent>
                   </Tooltip>
@@ -842,98 +786,13 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
                   </TooltipTrigger>
                   <TooltipContent>Surface a common misreading of the diagram</TooltipContent>
                 </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => addVisualizationTool("checkpoint")}
-                    >
-                      Step checkpoint
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Insert a pause-and-predict checkpoint</TooltipContent>
-                </Tooltip>
-              </div>
-            </PanelBlock>
-
-            <PanelBlock title="Checkpoints (Deck Replay)" icon={History}>
-              <div className="space-y-2">
-                {checkpointFrames.length === 0 ? (
-                  <p className="text-muted-foreground py-4 text-center text-xs">
-                    No checkpoints saved. Bookmark a step above.
-                  </p>
-                ) : (
-                  checkpointFrames.map((frame) => (
-                    <div
-                      key={`${frame.index}-${frame.prompt}`}
-                      onClick={() => goToFrame(frame.index)}
-                      className={cn(
-                        "group hover:bg-accent relative w-full cursor-pointer rounded-md border p-3 text-left transition-colors",
-                        frame.index === activeFrameIndex &&
-                          "bg-accent text-accent-foreground border-primary",
-                      )}
-                      title="Click to preview this step"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="flex items-center gap-1.5 text-sm font-medium">
-                          <Bookmark className="text-primary size-3 fill-current" />
-                          Step {frame.index + 1}
-                        </span>
-                        <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="icon-sm"
-                                variant="ghost"
-                                onClick={(e) => handleRevert(frame.index, e)}
-                                className="text-destructive hover:bg-destructive/10 h-6 w-6"
-                              >
-                                <Undo2 className="size-3" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              Revert: delete every turn after this step
-                            </TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="icon-sm"
-                                variant="ghost"
-                                onClick={(e) => handleBranch(frame.index, e)}
-                                disabled={branchingIndex === frame.index}
-                                className="text-primary hover:bg-primary/10 h-6 w-6"
-                              >
-                                {branchingIndex === frame.index ? (
-                                  <Loader2 className="size-3 animate-spin" />
-                                ) : (
-                                  <GitBranch className="size-3" />
-                                )}
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              Branch a new session from this step (non-destructive)
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                      </div>
-                      <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
-                        {frame.prompt}
-                      </p>
-                    </div>
-                  ))
-                )}
               </div>
             </PanelBlock>
 
             <PanelBlock title="Agent Trace" icon={Zap}>
               <div className="space-y-3">
                 {trace.length === 0 ? (
-                  <p className="text-muted-foreground text-xs">
-                    Agent activity appears here once a turn is in flight.
-                  </p>
+                  <p className="text-muted-foreground text-xs">Agent activity appears here once a turn is in flight.</p>
                 ) : (
                   trace.map((entry, index) => {
                     const Icon = AGENT_ICONS[index] ?? CheckCircle2;
@@ -944,15 +803,8 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium">
-                              {entry.label ?? agentLabel(entry.agent)}
-                            </p>
-                            <Badge
-                              variant={entry.status === "complete" ? "secondary" : "outline"}
-                              className="text-[10px]"
-                            >
-                              {entry.status}
-                            </Badge>
+                            <p className="text-sm font-medium">{entry.label ?? agentLabel(entry.agent)}</p>
+                            <Badge variant={entry.status === "complete" ? "secondary" : "outline"} className="text-[10px]">{entry.status}</Badge>
                           </div>
                           <p className="text-muted-foreground mt-1 text-xs">{entry.message}</p>
                         </div>
@@ -965,6 +817,17 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
           </div>
         </ScrollArea>
       )}
+
+      {/* TAB 3: VERTICAL TIMELINE */}
+      {activeTab === "timeline" && (
+        <VerticalTimeline 
+          frames={deckFrames} 
+          activeIndex={activeFrameIndex} 
+          onGoToFrame={goToFrame} 
+          onRevert={handleRevert} 
+          onBranch={handleBranch} 
+        />
+      )}
     </aside>
   );
 
@@ -973,11 +836,7 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
       {/* xl+ : draggable horizontal split. Saves the user's preferred ratio
           in localStorage via the autoSaveId. */}
       <div className="hidden h-full min-h-0 xl:block">
-        <ResizablePanelGroup
-          direction="horizontal"
-          autoSaveId="canvas-workbench-split"
-          className="gap-2"
-        >
+        <ResizablePanelGroup direction="horizontal" autoSaveId="canvas-workbench-split" className="gap-2">
           <ResizablePanel defaultSize={62} minSize={35}>
             {canvasArea}
           </ResizablePanel>
@@ -996,15 +855,7 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
   );
 }
 
-function PanelBlock({
-  title,
-  icon: Icon,
-  children,
-}: {
-  title: string;
-  icon: React.ComponentType<{ className?: string }>;
-  children: React.ReactNode;
-}) {
+function PanelBlock({ title, icon: Icon, children }: { title: string; icon: React.ComponentType<{ className?: string }>; children: React.ReactNode; }) {
   return (
     <section className="bg-card border-border rounded-lg border p-4">
       <div className="flex items-center gap-2">
