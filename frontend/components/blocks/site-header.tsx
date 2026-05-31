@@ -62,17 +62,17 @@ export function SiteHeader({ isAuthed }: Props) {
                 <ThemeToggle />
                 {isAuthed ? (
                   <ButtonGroup aria-label="Auth actions">
-                    <Button asChild variant="outline" size="sm">
+                    <Button asChild variant="outline" size="sm" className="hover:text-[#0A66C2] hover:border-[#0A66C2] hover:bg-[#0A66C2]/10 focus-visible:ring-[#0A66C2] transition-all duration-300">
                       <Link href="/dashboard">Dashboard</Link>
                     </Button>
                     <LogoutButton />
                   </ButtonGroup>
                 ) : (
                   <ButtonGroup aria-label="Auth actions">
-                    <Button asChild variant="outline" size="sm">
+                    <Button asChild variant="outline" size="sm" className="hover:text-[#0A66C2] hover:border-[#0A66C2] hover:bg-[#0A66C2]/10 focus-visible:ring-[#0A66C2] transition-all duration-300">
                       <Link href="/login">Login</Link>
                     </Button>
-                    <Button asChild size="sm">
+                    <Button asChild size="sm" className="bg-[#0A66C2] text-white hover:bg-[#004182] hover:shadow-[0_0_15px_rgba(10,102,194,0.35)] focus-visible:ring-[#0A66C2] border-0 transition-all duration-300">
                       <Link href="/signup">Sign up</Link>
                     </Button>
                   </ButtonGroup>

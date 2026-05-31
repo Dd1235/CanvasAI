@@ -28,13 +28,13 @@ export function LandingCTA() {
                 and the spaced-repetition loop for you.
               </p>
               <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
-                <Button asChild size="lg" className="rounded-full px-7">
+                <Button asChild size="lg" className="rounded-full px-7 bg-[#0A66C2] text-white hover:bg-[#004182] hover:shadow-[0_0_20px_rgba(10,102,194,0.4)] focus-visible:ring-2 focus-visible:ring-[#0A66C2] focus-visible:outline-none border-0 transition-all duration-300">
                   <Link href="/signup">
                     Create your workspace
-                    <ArrowRight className="size-4" />
+                    <ArrowRight className="ml-1 size-4" />
                   </Link>
                 </Button>
-                <Button asChild size="lg" variant="outline" className="rounded-full px-7">
+                <Button asChild size="lg" variant="outline" className="rounded-full px-7 hover:text-[#0A66C2] hover:border-[#0A66C2] hover:bg-[#0A66C2]/10 focus-visible:ring-[#0A66C2] transition-all duration-300">
                   <Link href="/login">Sign in</Link>
                 </Button>
               </div>

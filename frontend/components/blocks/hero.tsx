@@ -74,7 +74,7 @@ export function Hero() {
               <Button
                 asChild
                 size="lg"
-                className="rounded-full px-8 py-6 text-lg font-medium shadow-md transition-all duration-200 hover:-translate-y-px hover:shadow-lg"
+                className="rounded-full px-8 py-6 text-lg font-medium text-white bg-[#0A66C2] shadow-md border-0 transition-all duration-300 hover:-translate-y-px hover:bg-[#004182] hover:shadow-[0_0_20px_rgba(10,102,194,0.4)] focus-visible:ring-2 focus-visible:ring-[#0A66C2] focus-visible:outline-none"
               >
                 <Link href="/signup">
                   Get started
@@ -84,7 +84,7 @@ export function Hero() {
 
               <Link
                 href="/login"
-                className="text-muted-foreground hover:text-foreground text-lg font-medium underline-offset-4 transition-colors hover:underline"
+                className="text-muted-foreground hover:text-[#0A66C2] text-lg font-medium underline-offset-4 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A66C2] rounded-md px-3 py-1"
               >
                 Sign in →
               </Link>
