@@ -177,18 +177,20 @@ export function DashboardHomeClient() {
             </div>
 
             <div className={cn(
-              "flex items-end justify-between transition-all duration-[400ms]",
-              isExpanded ? "mt-6 opacity-100" : "mt-0 opacity-0"
+              "flex justify-end transition-all duration-[400ms]",
+              isExpanded ? "mt-6 opacity-100 pointer-events-auto" : "mt-0 opacity-0 pointer-events-none"
             )}>
               {isExpanded && (
                 <Button
-                  className="w-full shadow-md font-semibold text-sm h-10"
+                  title="Continue Session"
+                  size="icon"
+                  className="bg-[#0A66C2] text-white hover:bg-[#004182] hover:shadow-[0_0_15px_rgba(10,102,194,0.4)] border-0 rounded-full h-10 w-10 shrink-0 transition-transform hover:scale-110"
                   onClick={(e) => {
                     e.stopPropagation();
                     router.push(`/dashboard/canvas/${session.id}`);
                   }}
                 >
-                  Continue Session <ArrowRight className="ml-2 size-4" />
+                  <ArrowRight className="size-5" />
                 </Button>
               )}
             </div>
@@ -276,58 +278,50 @@ export function DashboardHomeClient() {
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
             className="flex flex-col"
           >
-            <BorderGlow
-              glowColor="270 80 60"
-              backgroundColor="hsl(var(--card))"
-              borderRadius={8}
-              className="flex-1 w-full"
-              colors={['#700fd1', '#e0157e', '#015f88']}
-            >
-              <Card className="h-full bg-transparent border-0 shadow-none">
-                <CardHeader>
-                  <div className="bg-secondary text-secondary-foreground mb-2 inline-flex size-9 items-center justify-center rounded-md">
-                    <Sparkles className="size-4" />
-                  </div>
-                  <CardTitle>{latestSession?.title ?? "Start your first canvas"}</CardTitle>
-                  <CardDescription>
-                    {latestSession
-                      ? `${latestSession.turn_count} backend turns tracked.`
-                      : "Create a new session below to populate your canvas."}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <MiniStat label="Mode" value="LangGraph canvas" />
-                    <MiniStat label="Recall cards" value={(recallStats?.total_cards ?? 0).toString()} />
-                    <MiniStat
-                      label="Updated"
-                      value={
-                        latestSession
-                          ? new Date(latestSession.updated_at).toLocaleTimeString()
-                          : "—"
-                      }
-                    />
-                  </div>
-                </CardContent>
-                <CardFooter className="mt-auto">
-                  {latestSession ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button asChild className="bg-[#0A66C2] text-white hover:bg-[#004182] hover:shadow-[0_0_20px_rgba(10,102,194,0.4)] focus-visible:ring-2 focus-visible:ring-[#0A66C2] focus-visible:outline-none border-0 transition-all duration-300">
-                          <Link href={`/dashboard/canvas/${latestSession.id}`}>
-                            Open canvas
-                            <ArrowRight className="size-4" />
-                          </Link>
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Resume this canvas session</TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <NewSessionDialog />
-                  )}
-                </CardFooter>
-              </Card>
-            </BorderGlow>
+            <Card className="h-full flex-1 w-full bg-card border border-black/10 dark:border-white/10 shadow-sm flex flex-col">
+              <CardHeader>
+                <div className="bg-[#0A66C2]/10 text-[#0A66C2] dark:bg-[#0A66C2]/20 dark:text-blue-400 mb-2 inline-flex size-9 items-center justify-center rounded-md">
+                  <Sparkles className="size-4" />
+                </div>
+                <CardTitle>{latestSession?.title ?? "Start your first canvas"}</CardTitle>
+                <CardDescription>
+                  {latestSession
+                    ? `${latestSession.turn_count} backend turns tracked.`
+                    : "Create a new session below to populate your canvas."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <MiniStat label="Mode" value="LangGraph canvas" />
+                  <MiniStat label="Recall cards" value={(recallStats?.total_cards ?? 0).toString()} />
+                  <MiniStat
+                    label="Updated"
+                    value={
+                      latestSession
+                        ? new Date(latestSession.updated_at).toLocaleTimeString()
+                        : "—"
+                    }
+                  />
+                </div>
+              </CardContent>
+              <CardFooter className="mt-auto">
+                {latestSession ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button asChild className="bg-[#0A66C2] text-white hover:bg-[#004182] hover:shadow-[0_0_20px_rgba(10,102,194,0.4)] focus-visible:ring-2 focus-visible:ring-[#0A66C2] focus-visible:outline-none border-0 transition-all duration-300">
+                        <Link href={`/dashboard/canvas/${latestSession.id}`}>
+                          Open canvas
+                          <ArrowRight className="size-4" />
+                        </Link>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Resume this canvas session</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <NewSessionDialog />
+                )}
+              </CardFooter>
+            </Card>
           </motion.div>
 
           {/* GROUNDING LIBRARY CARD */}
@@ -336,97 +330,79 @@ export function DashboardHomeClient() {
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
             className="flex flex-col"
           >
-            <BorderGlow
-              glowColor="270 80 60"
-              backgroundColor="hsl(var(--card))"
-              borderRadius={8}
-              className="flex-1 w-full"
-              colors={['#700fd1', '#e0157e', '#015f88']}
-            >
-              <Card className="h-full bg-transparent border-0 shadow-none flex flex-col">
-                <CardHeader>
-                  <div className="bg-secondary text-secondary-foreground mb-2 inline-flex size-9 items-center justify-center rounded-md">
-                    <FileText className="size-4" />
-                  </div>
-                  <CardTitle>Grounding library</CardTitle>
-                  <CardDescription>
-                    Stage sources to ground retrieval and citations across canvas turns.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground text-sm">
-                    Upload PDFs, markdown notes, or API references to make them available to the
-                    retrieval agent.
-                  </p>
-                </CardContent>
-                <CardFooter className="mt-auto">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" asChild className="hover:text-[#0A66C2] hover:border-[#0A66C2] hover:bg-[#0A66C2]/10 focus-visible:ring-[#0A66C2] transition-all duration-300">
-                        <Link href="/dashboard/documents">Browse documents</Link>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Manage uploaded grounding sources</TooltipContent>
-                  </Tooltip>
-                </CardFooter>
-              </Card>
-            </BorderGlow>
+            <Card className="h-full flex-1 w-full bg-card border border-black/10 dark:border-white/10 shadow-sm flex flex-col">
+              <CardHeader>
+                <div className="bg-[#0A66C2]/10 text-[#0A66C2] dark:bg-[#0A66C2]/20 dark:text-blue-400 mb-2 inline-flex size-9 items-center justify-center rounded-md">
+                  <FileText className="size-4" />
+                </div>
+                <CardTitle>Grounding library</CardTitle>
+                <CardDescription>
+                  Stage sources to ground retrieval and citations across canvas turns.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">
+                  Upload PDFs, markdown notes, or API references to make them available to the
+                  retrieval agent.
+                </p>
+              </CardContent>
+              <CardFooter className="mt-auto">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" asChild className="hover:text-[#0A66C2] hover:border-[#0A66C2] hover:bg-[#0A66C2]/10 focus-visible:ring-[#0A66C2] transition-all duration-300">
+                      <Link href="/dashboard/documents">Browse documents</Link>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Manage uploaded grounding sources</TooltipContent>
+                </Tooltip>
+              </CardFooter>
+            </Card>
           </motion.div>
 
         </div>
 
         {/* INTERACTIVE SESSION HISTORY CARD */}
-        <BorderGlow
-          glowColor="270 80 60"
-          backgroundColor="hsl(var(--card))" /* <--- 1. SET YOUR CUSTOM BACKGROUND COLOR HERE */
-          borderRadius={8}
-          className="w-full mt-4"
-          colors={['#700fd1', '#e0157e', '#015f88']}
-        >
-          <Card className="overflow-hidden bg-transparent border-0 shadow-none">
-            {/* Made the header slightly more transparent so it blends better */}
-            <CardHeader className="flex-row items-center justify-between space-y-0 relative z-10 bg-background/40 backdrop-blur-md border-b border-white/10">
-              <div className="space-y-1">
-                <CardTitle>Interactive Session History</CardTitle>
-                <CardDescription>
-                  Drag the globe to explore and resume your past canvas workspaces.
-                </CardDescription>
-              </div>
-              <CardAction>
-                <NewSessionDialog />
-              </CardAction>
-            </CardHeader>
-            
-            <CardContent className="p-0">
-            {sessions.length === 0 ? (
-              <div className="text-muted-foreground py-16 text-center text-sm">
-                {sessionsQuery.isLoading
-                  ? "Loading sessions…"
-                  : "No sessions yet. Start one above."}
-              </div>
-            ) : (
-              /*  Added onMouseLeave to the wrapper div  */
-              <div 
-                className="relative w-full h-[500px] bg-transparent overflow-hidden rounded-b-xl"
-                onMouseLeave={() => setExpandedInstanceId(null)} 
-              >
-                <DomeGallery
-                  items={domeItems}
-                  expandedInstanceId={expandedInstanceId} 
-                  fit={0.8}
-                  minRadius={450} 
-                  segments={24} 
-                  dragDampening={2}
-                  autoRotate={true}
-                  autoRotateSpeed={0.06}
-                  isPaused={!!expandedInstanceId} 
-                  onBackgroundClick={() => setExpandedInstanceId(null)}
-                />
-              </div>
-            )}
+        <Card className="w-full mt-4 overflow-hidden bg-card border border-black/10 dark:border-white/10 shadow-sm">
+          <CardHeader className="flex-row items-center justify-between space-y-0 relative z-10 bg-background/40 backdrop-blur-md border-b border-black/5 dark:border-white/10">
+            <div className="space-y-1">
+              <CardTitle>Interactive Session History</CardTitle>
+              <CardDescription>
+                Drag the globe to explore and resume your past canvas workspaces.
+              </CardDescription>
+            </div>
+            <CardAction>
+              <NewSessionDialog />
+            </CardAction>
+          </CardHeader>
+          
+          <CardContent className="p-0">
+          {sessions.length === 0 ? (
+            <div className="text-muted-foreground py-16 text-center text-sm">
+              {sessionsQuery.isLoading
+                ? "Loading sessions…"
+                : "No sessions yet. Start one above."}
+            </div>
+          ) : (
+            <div 
+              className="relative w-full h-[500px] bg-transparent overflow-hidden rounded-b-xl"
+              onMouseLeave={() => setExpandedInstanceId(null)} 
+            >
+              <DomeGallery
+                items={domeItems}
+                expandedInstanceId={expandedInstanceId} 
+                fit={0.8}
+                minRadius={450} 
+                segments={24} 
+                dragDampening={2}
+                autoRotate={true}
+                autoRotateSpeed={0.06}
+                isPaused={!!expandedInstanceId} 
+                onBackgroundClick={() => setExpandedInstanceId(null)}
+              />
+            </div>
+          )}
           </CardContent>
-          </Card>
-        </BorderGlow>
+        </Card>
       </div>
     </TooltipProvider>
   );
@@ -449,27 +425,19 @@ function MetricCard({
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
       className="h-full"
     >
-      <BorderGlow
-        glowColor="210 100 50" // A clean blue
-        backgroundColor="hsl(var(--card))"
-        borderRadius={12}
-        className="flex-1 w-full"
-        colors={['#3b82f6', '#06b6d4', '#6366f1']} // Blue, Cyan, Indigo
-      >
-        <Card className="h-full bg-transparent border-0 shadow-none">
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <div>
-              <CardDescription>{label}</CardDescription>
-              <CardTitle className="mt-2 text-2xl">{value}</CardTitle>
+      <Card className="h-full flex-1 w-full bg-card border border-black/10 dark:border-white/10 shadow-sm">
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <div>
+            <CardDescription className="text-muted-foreground font-medium">{label}</CardDescription>
+            <CardTitle className="mt-2 text-3xl font-semibold text-[#0A66C2] dark:text-white">{value}</CardTitle>
+          </div>
+          <CardAction>
+            <div className="bg-[#0A66C2]/10 text-[#0A66C2] dark:bg-[#0A66C2]/20 dark:text-blue-400 flex size-9 items-center justify-center rounded-md">
+              <Icon className="size-4" />
             </div>
-            <CardAction>
-              <div className="bg-secondary text-secondary-foreground flex size-9 items-center justify-center rounded-md">
-                <Icon className="size-4" />
-              </div>
-            </CardAction>
-          </CardHeader>
-        </Card>
-      </BorderGlow>
+          </CardAction>
+        </CardHeader>
+      </Card>
     </motion.div>
   );
 
