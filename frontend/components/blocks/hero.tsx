@@ -9,6 +9,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { AnimatedGroup } from "@/components/ui/animated-group";
+import { Ballpit } from "@/components/ui/ballpit";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { GradientText } from "@/components/ui/gradient-text";
 import { KnowledgeConstellation } from "@/components/blocks/knowledge-constellation";
@@ -21,7 +22,21 @@ export function Hero() {
             fade that re-uses the shadcn --background token. Both layers
             inherit any tweakcn-injected theme automatically. */}
         <KnowledgeConstellation className="-z-20 [mask-image:radial-gradient(ellipse_70%_60%_at_50%_30%,#000_30%,transparent_85%)]" />
-        <div className="absolute inset-0 -z-10 size-full [background:radial-gradient(125%_125%_at_50%_100%,transparent_0%,var(--background)_75%)]" />
+
+        {/* Layer 1: The Interactive 3D Ballpit */}
+        <div className="absolute inset-0 -z-20 size-full opacity-60 dark:opacity-40 pointer-events-auto">
+          <Ballpit
+            count={100}
+            gravity={0.01}
+            friction={0.9975}
+            wallBounce={0.95}
+            followCursor={false}
+            colors={[0x8b5cf6, 0x6d28d9, 0x4c1d95, 0x2e1065]}
+          />
+        </div>
+        
+        {/* Layer 2: The Vignette Masking Gradient */}
+        <div className="absolute inset-0 -z-10 size-full [background:radial-gradient(125%_125%_at_50%_100%,transparent_0%,var(--background)_80%)] pointer-events-none" />
 
         <div className="mx-auto max-w-5xl px-6 text-center">
           <AnimatedGroup

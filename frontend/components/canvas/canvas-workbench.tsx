@@ -39,6 +39,7 @@ import "@xyflow/react/dist/style.css";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import DotGrid from "@/components/ui/dot-grid";
 import { Separator } from "@/components/ui/separator";
 import {
   ResizableHandle,
@@ -478,25 +479,44 @@ export function CanvasWorkbench({ sessionId, topic, initialProfile }: Props) {
   // untouched).
   {/* Canvas Area */}
   const canvasArea = (
-    <section className="bg-card border-border h-full min-h-[28rem] overflow-hidden rounded-lg border">
-      <ReactFlowProvider>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          fitView
-          fitViewOptions={{ padding: 0.25 }}
-          defaultEdgeOptions={{ type: "smoothstep" }}
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background gap={24} />
-          <Controls position="bottom-left" />
-          <MiniMap pannable zoomable position="bottom-right" />
-        </ReactFlow>
-      </ReactFlowProvider>
+    <section className="bg-card border-border relative h-full min-h-[28rem] overflow-hidden rounded-lg border flex flex-col">
+      
+      {/* 1. NEW INTERACTIVE DOT GRID BACKGROUND */}
+      <div className="absolute inset-0 z-0">
+        <DotGrid
+          dotSize={3}
+          gap={24}
+          baseColor="#27272a" // Subtle zinc-800 to match dark mode
+          activeColor="#c084fc" // Purple interactive glow
+          proximity={120}
+          shockRadius={250}
+          shockStrength={5}
+          resistance={700}
+          returnDuration={1.7}
+        />
+      </div>
+
+      {/* 2. MAIN CONTENT LAYER (Z-10 sits on top of the dots) */}
+      <div className="relative z-10 w-full h-full flex-1">
+        <ReactFlowProvider>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            fitView
+            fitViewOptions={{ padding: 0.25 }}
+            defaultEdgeOptions={{ type: "smoothstep" }}
+            proOptions={{ hideAttribution: true }}
+          >
+            {/* Removed the old <Background /> component from here */}
+            <Controls position="bottom-left" />
+            <MiniMap pannable zoomable position="bottom-right" className="opacity-80" />
+          </ReactFlow>
+        </ReactFlowProvider>
+      </div>
     </section>
   );
 

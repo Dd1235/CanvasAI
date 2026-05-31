@@ -30,7 +30,11 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-
+import { MagicContainer, MagicCard } from "@/components/ui/magic-bento";
+import Dock from "@/components/ui/dock";
+import { LayoutGrid } from "lucide-react";
+import DotGrid from "@/components/ui/dot-grid";
+import ChromaGrid from "@/components/ui/ChromaGrid";
 import "@xyflow/react/dist/style.css";
 
 import { Badge } from "@/components/ui/badge";
@@ -568,6 +572,40 @@ export function KnowledgeGraphBoard() {
       })),
     [graph.edges],
   );
+  const [viewMode, setViewMode] = React.useState<"graph" | "grid">("graph");
+
+  const chromaItems = React.useMemo(() => {
+    return graph.nodes.map((node) => ({
+      image: `https://api.dicebear.com/7.x/shapes/svg?seed=${node.id}&backgroundColor=120F17`, 
+      title: node.title,
+      subtitle: node.cluster.replace("-", " "),
+      score: Math.round(node.mastery * 100),
+      url: undefined,
+    }));
+  }, [graph.nodes]);
+
+  // --- CLEANED UP STATE & DOCK ITEMS ---
+
+  // 1. The mapped items for the Floating Dock (Now only 3 items!)
+  const dockItems = React.useMemo(() => [
+    { 
+      icon: <FilePlus2 className="size-5 text-white" />, 
+      label: 'Add facts', 
+      onClick: () => setFactsOpen(true) 
+    },
+    { 
+      icon: <Brain className="size-5 text-white" />, 
+      label: 'Study sprint', 
+      onClick: () => setSprintOpen(true) 
+    },
+    { 
+      icon: loading ? <Loader2 className="size-5 animate-spin text-white" /> : <RefreshCcw className="size-5 text-white" />, 
+      label: 'Refresh', 
+      onClick: () => { if (!loading) void loadGraph() } 
+    }
+  ], [loading, loadGraph]); // Removed viewMode from dependencies
+
+  // ------------------------------------------------
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -647,43 +685,71 @@ export function KnowledgeGraphBoard() {
           )}
         </aside>
 
-        <section className="bg-card border-border relative min-h-[32rem] overflow-hidden rounded-lg border">
-          <ReactFlowProvider>
-            <ReactFlow
-              nodes={flowNodes}
-              edges={flowEdges}
-              onNodeClick={(_, node) => {
-                setSelectedId(node.id);
-                setPanelOpen(true);
-              }}
-              fitView
-              fitViewOptions={{ padding: 0.25 }}
-              minZoom={0.35}
-              maxZoom={1.6}
-              proOptions={{ hideAttribution: true }}
-            >
-              <Background gap={28} />
-              <Controls position="bottom-left" />
-              <MiniMap pannable zoomable position="bottom-right" />
-            </ReactFlow>
-          </ReactFlowProvider>
-          {loaded && graph.nodes.length === 0 ? (
-            <div className="bg-background/90 pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div className="pointer-events-auto max-w-sm space-y-3 rounded-lg border p-6 text-center shadow-sm">
-                <Network className="text-muted-foreground mx-auto size-6" />
-                <p className="text-sm font-medium">No topics yet</p>
-                <p className="text-muted-foreground text-xs">
-                  Export a canvas session to the graph or use <strong>Add facts</strong> to extract
-                  topics from text.
-                </p>
-                <Button size="sm" onClick={() => setFactsOpen(true)}>
-                  <FilePlus2 className="size-4" />
-                  Add facts
-                </Button>
+        <section className="bg-card border-border relative min-h-[32rem] overflow-hidden rounded-lg border flex flex-col">
+            
+            {/* NEW INTERACTIVE DOT GRID BACKGROUND */}
+            <div className="absolute inset-0 z-0">
+              <DotGrid
+                dotSize={3}
+                gap={24}
+                baseColor="#27272a" /* subtle zinc-800 for dark mode */
+                activeColor="#c084fc" /* purple matching your border glows */
+                proximity={120}
+                shockRadius={250}
+                shockStrength={5}
+                resistance={700}
+                returnDuration={1.7}
+              />
+            </div>
+
+            {/* MAIN CONTENT LAYER (Z-10 sits on top of the dots) */}
+            <div className="relative z-10 w-full h-full flex-1">
+              
+              <ReactFlowProvider>
+                <ReactFlow
+                  nodes={flowNodes}
+                  edges={flowEdges}
+                  onNodeClick={(_, node) => {
+                    setSelectedId(node.id);
+                    setPanelOpen(true);
+                  }}
+                  fitView
+                  fitViewOptions={{ padding: 0.25 }}
+                  minZoom={0.35}
+                  maxZoom={1.6}
+                  proOptions={{ hideAttribution: true }}
+                >
+                  <Controls position="bottom-left" />
+                  <MiniMap pannable zoomable position="bottom-right" className="opacity-80" />
+                </ReactFlow>
+              </ReactFlowProvider>
+
+              {/* Empty State Fallback */}
+              {loaded && graph.nodes.length === 0 ? (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-10">
+                  <div className="bg-background/80 backdrop-blur-sm pointer-events-auto max-w-sm space-y-3 rounded-lg border p-6 text-center shadow-sm">
+                    <Network className="text-muted-foreground mx-auto size-6" />
+                    <p className="text-sm font-medium">No topics yet</p>
+                    <p className="text-muted-foreground text-xs">
+                      Export a canvas session to the graph or use <strong>Add facts</strong> to extract
+                      topics from text.
+                    </p>
+                    <Button size="sm" onClick={() => setFactsOpen(true)}>
+                      <FilePlus2 className="size-4" />
+                      Add facts
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* THE DOCK (Automatically re-centers 3 items) */}
+              <div className="absolute bottom-6 left-0 w-full pointer-events-none flex justify-center z-50">
+                <div className="pointer-events-auto">
+                  <Dock items={dockItems} />
+                </div>
               </div>
             </div>
-          ) : null}
-        </section>
+          </section>
       </div>
 
       <Dialog open={sprintOpen} onOpenChange={setSprintOpen}>
@@ -1215,23 +1281,19 @@ function RevisionPanel({
 }) {
   if (!selected) return null;
 
-  // The graph node renders mastery as its top-right percentage. The sidebar
-  // used to show confidence in the header, which made it look like the two
-  // numbers had drifted out of sync. We now show *both* metrics here, clearly
-  // labelled, and lead with mastery so the header pill matches the node pill.
   const masteryPct = Math.round(selected.mastery * 100);
   const confidencePct = Math.round(selected.confidence * 100);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col bg-background/50">
       <div className="flex items-start justify-between gap-3 border-b p-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <Network className="size-4" />
+            <Network className="size-4 text-primary" />
             <h2 className="truncate text-sm font-semibold">{selected.title}</h2>
           </div>
           <p className="text-muted-foreground mt-1 text-xs">
-            {selected.cluster.replace("-", " ")} · mastery {masteryPct}%
+            {selected.cluster.replace("-", " ")}
           </p>
         </div>
         <Button size="icon-sm" variant="ghost" aria-label="Close revision panel" onClick={onClose}>
@@ -1240,70 +1302,90 @@ function RevisionPanel({
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-4 p-4">
-          <div className="grid grid-cols-2 gap-2">
-            <ScorePill label="Mastery" value={masteryPct} hint="Matches the % on the graph node — how well you can recall this topic." />
-            <ScorePill label="Confidence" value={confidencePct} hint="How sure the extractor is that this topic is well-grounded in your sources." />
-          </div>
-          <div>
-            <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Core idea</p>
-            <p className="mt-2 text-sm">{selected.summary}</p>
+        {/* Wrapped the inner content in MagicContainer so the spotlight works across the whole sidebar */}
+        <MagicContainer spotlightRadius={300} className="space-y-4 p-4">
+          
+          {/* STATS: Upgraded to dynamic color pills */}
+          <div className="grid grid-cols-2 gap-3">
+            <ScorePill label="Mastery" value={masteryPct} hint="How well you can recall this topic." />
+            <ScorePill label="Confidence" value={confidencePct} hint="How well-grounded this topic is in your sources." />
           </div>
 
-          <div className="rounded-md border p-3">
-            <div className="flex items-center gap-2">
+          {/* CORE IDEA */}
+          <MagicCard enableTilt={true} enableStars={false} className="rounded-xl border bg-card/40 p-4">
+            <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-2">Core idea</p>
+            <p className="text-sm leading-relaxed">{selected.summary}</p>
+          </MagicCard>
+
+          {/* REVISE: Enabled stars here to draw attention to the action item */}
+          <MagicCard enableTilt={true} enableStars={true} particleCount={6} className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <div className="flex items-center gap-2 mb-2 text-primary">
               <BookOpenCheck className="size-4" />
-              <p className="text-sm font-medium">Revise</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider">Revise</p>
             </div>
-            <p className="text-muted-foreground mt-2 text-sm">{selected.revision_prompt}</p>
-          </div>
+            <p className="text-sm font-medium leading-relaxed">{selected.revision_prompt}</p>
+          </MagicCard>
 
-          <div>
-            <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Tags</p>
-            <div className="mt-2 flex flex-wrap gap-2">
+          {/* TAGS */}
+          <MagicCard enableTilt={true} enableStars={false} className="rounded-xl border bg-card/40 p-4">
+            <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-3">Tags</p>
+            <div className="flex flex-wrap gap-2">
               {selected.tags.map((tag) => (
-                <Badge key={tag} variant="outline">
+                <Badge key={tag} variant="secondary" className="bg-background">
                   {tag}
                 </Badge>
               ))}
             </div>
+          </MagicCard>
+
+          {/* RELATIONSHIPS */}
+          <div className="space-y-2">
+            <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider px-1">Relationships</p>
+            {relatedEdges.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic px-1">No relationships found.</p>
+            ) : (
+              <div className="space-y-2">
+                {relatedEdges.map((edge) => {
+                  const neighborId = edge.source === selected.id ? edge.target : edge.source;
+                  const neighbor = graph.nodes.find((node) => node.id === neighborId);
+                  return (
+                    <MagicCard key={edge.id} enableTilt={true} enableStars={false} className="rounded-xl border bg-card/40 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium">{neighbor?.title ?? neighborId}</span>
+                        <Badge variant="outline" className="text-[10px]">{edge.relation}</Badge>
+                      </div>
+                      <p className="text-muted-foreground mt-2 text-xs leading-relaxed">{edge.evidence}</p>
+                    </MagicCard>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          <div>
-            <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Relationships</p>
-            <div className="mt-2 space-y-2">
-              {relatedEdges.map((edge) => {
-                const neighborId = edge.source === selected.id ? edge.target : edge.source;
-                const neighbor = graph.nodes.find((node) => node.id === neighborId);
-                return (
-                  <div key={edge.id} className="rounded-md border p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium">{neighbor?.title ?? neighborId}</span>
-                      <Badge variant="secondary">{edge.relation}</Badge>
-                    </div>
-                    <p className="text-muted-foreground mt-1 text-xs">{edge.evidence}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Evidence</p>
-            <ul className="mt-2 space-y-1">
-              {selected.evidence.map((item) => (
-                <li key={item} className="text-muted-foreground text-xs">
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+          {/* EVIDENCE */}
+          {selected.evidence.length > 0 && (
+            <MagicCard enableTilt={true} enableStars={false} className="rounded-xl border bg-card/40 p-4">
+              <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-2">Evidence</p>
+              <ul className="space-y-2">
+                {selected.evidence.map((item) => (
+                  <li key={item} className="text-muted-foreground text-xs leading-relaxed flex items-start gap-2">
+                    <span className="text-primary mt-0.5">•</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </MagicCard>
+          )}
+          
+        </MagicContainer>
       </ScrollArea>
     </div>
   );
 }
 
+// Upgraded ScorePill with dynamic Red/Amber/Green coloring and 3D hover
+// Upgraded ScorePill with circular progress rings and 3D hover
+// Upgraded ScorePill with solid pie chart and 3D hover
 function ScorePill({
   label,
   value,
@@ -1313,20 +1395,75 @@ function ScorePill({
   value: number;
   hint: string;
 }) {
+  // Dynamic color logic matching the ChromaGrid
+  const isDanger = value < 35;
+  const isWarning = value >= 35 && value <= 75;
+  
+  const color = isDanger ? "#EF4444" : isWarning ? "#F59E0B" : "#10B981";
+  const glowColor = isDanger ? "239,68,68" : isWarning ? "245,158,11" : "16,185,129";
+  const bgColor = isDanger ? "rgba(239,68,68,0.05)" : isWarning ? "rgba(245,158,11,0.05)" : "rgba(16,185,129,0.05)";
+
+  // Math for the SVG solid pie chart trick
+  // By using a radius of 20 and a strokeWidth of 40, the stroke fills inward perfectly to the center!
+  const radius = 20; 
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (value / 100) * circumference;
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="rounded-md border p-3">
-          <p className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
-            {label}
-          </p>
-          <p className="mt-1 text-lg font-semibold">{value}%</p>
-          <div className="bg-muted mt-2 h-1.5 rounded-full">
-            <div
-              className="bg-primary h-full rounded-full"
-              style={{ width: `${Math.max(4, value)}%` }}
-            />
-          </div>
+        <div className="h-full">
+          <MagicCard 
+            enableTilt={true} 
+            enableStars={false}
+            glowColor={glowColor}
+            className="h-full flex flex-col items-center justify-center rounded-xl border p-4 transition-colors text-center"
+            style={{ backgroundColor: bgColor, borderColor: `${color}30` }}
+          >
+            <p className="text-foreground/70 text-[10px] font-bold uppercase tracking-wider mb-3">
+              {label}
+            </p>
+            
+            {/* Solid Pie Chart */}
+            <div className="relative flex items-center justify-center w-20 h-20">
+              <svg className="w-full h-full transform -rotate-90 rounded-full" viewBox="0 0 80 80">
+                {/* Background slice (the remaining percentage) */}
+                <circle
+                  cx="40"
+                  cy="40"
+                  r={radius}
+                  stroke="currentColor"
+                  strokeWidth="40"
+                  fill="transparent"
+                  className="text-foreground/10"
+                />
+                {/* Filled Pie Slice */}
+                <circle
+                  cx="40"
+                  cy="40"
+                  r={radius}
+                  stroke={color}
+                  strokeWidth="40"
+                  fill="transparent"
+                  style={{
+                    strokeDasharray: circumference,
+                    strokeDashoffset: strokeDashoffset,
+                    transition: "stroke-dashoffset 1s ease-in-out",
+                  }}
+                />
+              </svg>
+              
+              {/* Centered Value (with a subtle blur pill so it's readable over the solid pie) */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                 <span 
+                   className="px-2 py-0.5 rounded-md bg-background/70 backdrop-blur-sm text-sm font-bold tracking-tight shadow-sm" 
+                   style={{ color: color }}
+                 >
+                   {value}%
+                 </span>
+              </div>
+            </div>
+          </MagicCard>
         </div>
       </TooltipTrigger>
       <TooltipContent>{hint}</TooltipContent>

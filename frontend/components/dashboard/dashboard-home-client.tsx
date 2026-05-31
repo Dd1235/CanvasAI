@@ -15,6 +15,12 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { motion } from "motion/react";
+import BorderGlow from "@/components/ui/border-glow";
+import LogoLoop from "@/components/ui/logo-loop";
+import { useRouter } from "next/navigation";
+import DomeGallery from "@/components/ui/dome-gallery";
+import { cn } from "@/lib/utils";
 import { NewSessionDialog } from "@/components/dashboard/new-session-dialog";
 import {
   Card,
@@ -67,6 +73,130 @@ export function DashboardHomeClient() {
   }, [sessions]);
 
   const latestSession = sessions[0];
+  const menuItems = React.useMemo(() => {
+    return sessions.map((session) => ({
+      // Generate a unique geometric shape based on the session ID
+      image: `https://api.dicebear.com/7.x/shapes/svg?seed=${session.id}&backgroundColor=120F17`,
+      title: session.title,
+      description: `${session.turn_count} turns · ${session.last_prompt ?? "No prompt yet"}`,
+      link: `/dashboard/canvas/${session.id}`,
+    }));
+  }, [sessions]);
+  const metricItems = React.useMemo(() => [
+    {
+      node: (
+        <div className="w-[320px] h-[130px]">
+          <MetricCard
+            icon={Workflow}
+            label="Backend sessions"
+            value={sessions.length.toString()}
+            hint="Canvas sessions stored on the backend for your account."
+          />
+        </div>
+      )
+    },
+    {
+      node: (
+        <div className="w-[320px] h-[130px]">
+          <MetricCard
+            icon={Database}
+            label="Recall cards"
+            value={(recallStats?.total_cards ?? 0).toString()}
+            hint="Total spaced-repetition cards built from your canvases."
+          />
+        </div>
+      )
+    },
+    {
+      node: (
+        <div className="w-[320px] h-[130px]">
+          <MetricCard
+            icon={History}
+            label="Due recall"
+            value={(recallStats?.due_cards ?? 0).toString()}
+            hint="Recall cards scheduled for review today."
+          />
+        </div>
+      )
+    }
+  ], [sessions.length, recallStats]);
+
+  const router = useRouter(); // <--- Make sure this is added inside the component!
+
+// Track which card is currently expanded in the Dome
+  // Track which card is currently expanded in the Dome
+  // Track the exact INSTANCE that was clicked
+  const [expandedInstanceId, setExpandedInstanceId] = React.useState<string | null>(null);
+
+  // Map sessions to premium Dome Gallery cards
+  const domeItems = React.useMemo(() => {
+    return sessions.map((session) => {
+      return {
+        id: session.id,
+        // The gallery passes back the specific instanceId that was clicked
+        onClick: (instanceId: string) => setExpandedInstanceId(instanceId),
+        
+        // Content is now a function! The gallery tells us if this exact card is the expanded one.
+        content: (isExpanded: boolean) => (
+          <div
+            className={cn(
+              "flex flex-col justify-between w-full min-h-full h-fit text-left transition-all duration-[400ms] ease-out outline-none",
+              isExpanded
+                ? "p-6 rounded-2xl bg-card shadow-[0_20px_60px_rgba(0,0,0,0.6)] border-2 border-primary z-50 cursor-default"
+                : "p-5 rounded-2xl bg-card/90 shadow-lg border border-white/10 hover:border-white/20 hover:bg-card z-10 cursor-pointer"
+            )}
+            style={{
+              transform: isExpanded ? "translateZ(100px) scale(1.15)" : "translateZ(0px) scale(var(--dyn-scale, 1))",
+            }}
+          >
+            <div className="space-y-3">
+              <h3 className={cn(
+                "font-bold text-foreground transition-all duration-300",
+                isExpanded ? "text-2xl line-clamp-none leading-tight" : "text-xl line-clamp-3 leading-snug"
+              )}>
+                {session.title || "Untitled Session"}
+              </h3>
+              
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="font-semibold text-xs px-2.5 py-0.5">
+                  {session.turn_count} turns
+                </Badge>
+              </div>
+              
+              <div className={cn(
+                "overflow-hidden transition-all duration-[400ms] space-y-1.5",
+                isExpanded ? "max-h-24 opacity-100 mt-4" : "max-h-0 opacity-0 mt-0"
+              )}>
+                <p className="text-xs font-medium text-muted-foreground">
+                  Updated {new Date(session.updated_at).toLocaleDateString()}
+                </p>
+                <p className="text-xs font-medium text-muted-foreground/60">
+                  Created {new Date(session.created_at).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+
+            <div className={cn(
+              "flex items-end justify-between transition-all duration-[400ms]",
+              isExpanded ? "mt-6 opacity-100" : "mt-0 opacity-0"
+            )}>
+              {isExpanded && (
+                <Button
+                  className="w-full shadow-md font-semibold text-sm h-10"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    router.push(`/dashboard/canvas/${session.id}`);
+                  }}
+                >
+                  Continue Session <ArrowRight className="ml-2 size-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+        )
+      };
+    });
+  }, [sessions, router]);
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -122,153 +252,181 @@ export function DashboardHomeClient() {
           </div>
         </header>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <MetricCard
-            icon={Workflow}
-            label="Backend sessions"
-            value={sessions.length.toString()}
-            hint="Canvas sessions stored on the backend for your account."
-          />
-          <MetricCard
-            icon={Database}
-            label="Recall cards"
-            value={(recallStats?.total_cards ?? 0).toString()}
-            hint="Total spaced-repetition cards built from your canvases."
-          />
-          <MetricCard
-            icon={History}
-            label="Due recall"
-            value={(recallStats?.due_cards ?? 0).toString()}
-            hint="Recall cards scheduled for review today."
+        {/* SCROLLING METRICS LOOP */}
+        <div className="w-full relative py-2">
+          <LogoLoop
+            logos={metricItems}
+            speed={40}
+            direction="left"
+            logoHeight={130}
+            gap={24}
+            hoverSpeed={0}
+            fadeOut={false}
+            // 1. REMOVED fadeOutColor so it auto-switches based on light/dark mode!
+            // 2. ADDED overflow-hidden to kill that vertical scrollbar
+            className="overflow-hidden" 
           />
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <Card>
-            <CardHeader>
-              <div className="bg-secondary text-secondary-foreground mb-2 inline-flex size-9 items-center justify-center rounded-md">
-                <Sparkles className="size-4" />
-              </div>
-              <CardTitle>{latestSession?.title ?? "Start your first canvas"}</CardTitle>
-              <CardDescription>
-                {latestSession
-                  ? `${latestSession.turn_count} backend turns tracked.`
-                  : "Create a new session below to populate your canvas."}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <MiniStat label="Mode" value="LangGraph canvas" />
-                <MiniStat label="Recall cards" value={(recallStats?.total_cards ?? 0).toString()} />
-                <MiniStat
-                  label="Updated"
-                  value={
-                    latestSession
-                      ? new Date(latestSession.updated_at).toLocaleTimeString()
-                      : "—"
-                  }
-                />
-              </div>
-            </CardContent>
-            <CardFooter>
-              {latestSession ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button asChild>
-                      <Link href={`/dashboard/canvas/${latestSession.id}`}>
-                        Open canvas
-                        <ArrowRight className="size-4" />
-                      </Link>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Resume this canvas session</TooltipContent>
-                </Tooltip>
-              ) : (
-                <NewSessionDialog />
-              )}
-            </CardFooter>
-          </Card>
+          
+          {/* LATEST SESSION CARD */}
+          <motion.div
+            whileHover={{ scale: 1.02, y: -4 }}
+            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+            className="flex flex-col"
+          >
+            <BorderGlow
+              glowColor="270 80 60"
+              backgroundColor="hsl(var(--card))"
+              borderRadius={12}
+              className="flex-1 w-full"
+              colors={['#700fd1', '#e0157e', '#015f88']}
+            >
+              <Card className="h-full bg-transparent border-0 shadow-none">
+                <CardHeader>
+                  <div className="bg-secondary text-secondary-foreground mb-2 inline-flex size-9 items-center justify-center rounded-md">
+                    <Sparkles className="size-4" />
+                  </div>
+                  <CardTitle>{latestSession?.title ?? "Start your first canvas"}</CardTitle>
+                  <CardDescription>
+                    {latestSession
+                      ? `${latestSession.turn_count} backend turns tracked.`
+                      : "Create a new session below to populate your canvas."}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <MiniStat label="Mode" value="LangGraph canvas" />
+                    <MiniStat label="Recall cards" value={(recallStats?.total_cards ?? 0).toString()} />
+                    <MiniStat
+                      label="Updated"
+                      value={
+                        latestSession
+                          ? new Date(latestSession.updated_at).toLocaleTimeString()
+                          : "—"
+                      }
+                    />
+                  </div>
+                </CardContent>
+                <CardFooter className="mt-auto">
+                  {latestSession ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button asChild>
+                          <Link href={`/dashboard/canvas/${latestSession.id}`}>
+                            Open canvas
+                            <ArrowRight className="size-4" />
+                          </Link>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Resume this canvas session</TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    <NewSessionDialog />
+                  )}
+                </CardFooter>
+              </Card>
+            </BorderGlow>
+          </motion.div>
 
-          <Card>
-            <CardHeader>
-              <div className="bg-secondary text-secondary-foreground mb-2 inline-flex size-9 items-center justify-center rounded-md">
-                <FileText className="size-4" />
-              </div>
-              <CardTitle>Grounding library</CardTitle>
-              <CardDescription>
-                Stage sources to ground retrieval and citations across canvas turns.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground text-sm">
-                Upload PDFs, markdown notes, or API references to make them available to the
-                retrieval agent.
-              </p>
-            </CardContent>
-            <CardFooter>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="outline" asChild>
-                    <Link href="/dashboard/documents">Browse documents</Link>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Manage uploaded grounding sources</TooltipContent>
-              </Tooltip>
-            </CardFooter>
-          </Card>
+          {/* GROUNDING LIBRARY CARD */}
+          <motion.div
+            whileHover={{ scale: 1.02, y: -4 }}
+            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+            className="flex flex-col"
+          >
+            <BorderGlow
+              glowColor="270 80 60"
+              backgroundColor="hsl(var(--card))"
+              borderRadius={12}
+              className="flex-1 w-full"
+              colors={['#700fd1', '#e0157e', '#015f88']}
+            >
+              <Card className="h-full bg-transparent border-0 shadow-none flex flex-col">
+                <CardHeader>
+                  <div className="bg-secondary text-secondary-foreground mb-2 inline-flex size-9 items-center justify-center rounded-md">
+                    <FileText className="size-4" />
+                  </div>
+                  <CardTitle>Grounding library</CardTitle>
+                  <CardDescription>
+                    Stage sources to ground retrieval and citations across canvas turns.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground text-sm">
+                    Upload PDFs, markdown notes, or API references to make them available to the
+                    retrieval agent.
+                  </p>
+                </CardContent>
+                <CardFooter className="mt-auto">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="outline" asChild>
+                        <Link href="/dashboard/documents">Browse documents</Link>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Manage uploaded grounding sources</TooltipContent>
+                  </Tooltip>
+                </CardFooter>
+              </Card>
+            </BorderGlow>
+          </motion.div>
+
         </div>
 
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <div className="space-y-1">
-              <CardTitle>Recent sessions</CardTitle>
-              <CardDescription>
-                Backend sessions appear here after a canvas turn streams successfully.
-              </CardDescription>
-            </div>
-            <CardAction>
-              <NewSessionDialog />
-            </CardAction>
-          </CardHeader>
-          <CardContent>
+        {/* INTERACTIVE SESSION HISTORY CARD */}
+        <BorderGlow
+          glowColor="270 80 60"
+          backgroundColor="hsl(var(--card))" /* <--- 1. SET YOUR CUSTOM BACKGROUND COLOR HERE */
+          borderRadius={12}
+          className="w-full mt-4"
+          colors={['#700fd1', '#e0157e', '#015f88']}
+        >
+          <Card className="overflow-hidden bg-transparent border-0 shadow-none">
+            {/* Made the header slightly more transparent so it blends better */}
+            <CardHeader className="flex-row items-center justify-between space-y-0 relative z-10 bg-background/40 backdrop-blur-md border-b border-white/10">
+              <div className="space-y-1">
+                <CardTitle>Interactive Session History</CardTitle>
+                <CardDescription>
+                  Drag the globe to explore and resume your past canvas workspaces.
+                </CardDescription>
+              </div>
+              <CardAction>
+                <NewSessionDialog />
+              </CardAction>
+            </CardHeader>
+            
+            <CardContent className="p-0">
             {sessions.length === 0 ? (
-              <div className="text-muted-foreground py-8 text-center text-sm">
+              <div className="text-muted-foreground py-16 text-center text-sm">
                 {sessionsQuery.isLoading
                   ? "Loading sessions…"
                   : "No sessions yet. Start one above."}
               </div>
             ) : (
-              <ul className="divide-border divide-y">
-                {sessions.map((session) => (
-                  <li
-                    key={session.id}
-                    className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between"
-                  >
-                    <div className="min-w-0">
-                      <span className="font-medium">{session.title}</span>
-                      <p className="text-muted-foreground mt-1 text-sm">
-                        {session.turn_count} turns · {session.last_prompt ?? "No prompt yet"}
-                      </p>
-                    </div>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          asChild
-                          variant="ghost"
-                          size="sm"
-                          className="self-start md:self-auto"
-                        >
-                          <Link href={`/dashboard/canvas/${session.id}`}>Open</Link>
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Open this canvas session</TooltipContent>
-                    </Tooltip>
-                  </li>
-                ))}
-              </ul>
+              /* 👇 Added onMouseLeave to the wrapper div 👇 */
+              <div 
+                className="relative w-full h-[500px] bg-transparent overflow-hidden rounded-b-xl"
+                onMouseLeave={() => setExpandedInstanceId(null)} 
+              >
+                <DomeGallery
+                  items={domeItems}
+                  expandedInstanceId={expandedInstanceId} 
+                  fit={0.8}
+                  minRadius={450} 
+                  segments={24} 
+                  dragDampening={2}
+                  autoRotate={true}
+                  autoRotateSpeed={0.06}
+                  isPaused={!!expandedInstanceId} 
+                  onBackgroundClick={() => setExpandedInstanceId(null)}
+                />
+              </div>
             )}
           </CardContent>
-        </Card>
+          </Card>
+        </BorderGlow>
       </div>
     </TooltipProvider>
   );
@@ -286,20 +444,35 @@ function MetricCard({
   hint?: string;
 }) {
   const card = (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <div>
-          <CardDescription>{label}</CardDescription>
-          <CardTitle className="mt-2 text-2xl">{value}</CardTitle>
-        </div>
-        <CardAction>
-          <div className="bg-secondary text-secondary-foreground flex size-9 items-center justify-center rounded-md">
-            <Icon className="size-4" />
-          </div>
-        </CardAction>
-      </CardHeader>
-    </Card>
+    <motion.div
+      whileHover={{ scale: 1.04, y: -4 }}
+      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      className="h-full"
+    >
+      <BorderGlow
+        glowColor="270 80 60" // A nice AI-themed purple glow
+        backgroundColor="hsl(var(--card))" // Shadcn dark mode default background
+        borderRadius={12}
+        className="h-full w-full"
+        colors={['#c084fc', '#f472b6', '#38bdf8']}
+      >
+        <Card className="h-full bg-transparent border-0 shadow-none">
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <div>
+              <CardDescription>{label}</CardDescription>
+              <CardTitle className="mt-2 text-2xl">{value}</CardTitle>
+            </div>
+            <CardAction>
+              <div className="bg-secondary text-secondary-foreground flex size-9 items-center justify-center rounded-md">
+                <Icon className="size-4" />
+              </div>
+            </CardAction>
+          </CardHeader>
+        </Card>
+      </BorderGlow>
+    </motion.div>
   );
+
   if (!hint) return card;
   return (
     <Tooltip>

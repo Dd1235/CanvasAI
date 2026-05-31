@@ -3,6 +3,7 @@
 import * as React from "react";
 import { BookOpenCheck, CalendarClock, Layers3, Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { MagicContainer, MagicCard } from "@/components/ui/magic-bento";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,7 @@ export function ActiveRecallBoard() {
 
   return (
     <TooltipProvider delayDuration={150}>
+    <MagicContainer> 
     <div className="mx-auto w-full max-w-6xl space-y-6 px-6 py-8">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
@@ -180,6 +182,7 @@ export function ActiveRecallBoard() {
         </Card>
       ) : null}
     </div>
+    </MagicContainer>
     </TooltipProvider>
   );
 }
@@ -196,7 +199,12 @@ function RecallCard({
   onReview: (rating: (typeof RATINGS)[number]["id"]) => void;
 }) {
   return (
-    <article className="rounded-md border p-4">
+    <MagicCard 
+      className="rounded-md border bg-card p-4 hover:shadow-lg transition-all"
+      enableStars={true}
+      enableTilt={true}
+      particleCount={8}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -246,18 +254,24 @@ function RecallCard({
           <TooltipContent>Show the back of the card before grading recall</TooltipContent>
         </Tooltip>
       )}
-    </article>
+    </MagicCard>
   );
 }
 
 function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl">{value}</CardTitle>
-      </CardHeader>
-    </Card>
+    <MagicCard 
+      className="rounded-xl bg-card text-card-foreground shadow-sm"
+      enableTilt={true} 
+      enableStars={false} // Disable stars for top metrics to keep it clean
+    >
+      <Card className="h-full border-0 bg-transparent shadow-none">
+        <CardHeader>
+          <CardDescription>{label}</CardDescription>
+          <CardTitle className="text-2xl">{value}</CardTitle>
+        </CardHeader>
+      </Card>
+    </MagicCard>
   );
 }
 
