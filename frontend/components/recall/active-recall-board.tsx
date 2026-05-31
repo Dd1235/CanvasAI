@@ -92,7 +92,6 @@ export function ActiveRecallBoard() {
 
   return (
     <TooltipProvider delayDuration={150}>
-    <MagicContainer> 
     <div className="mx-auto w-full max-w-6xl space-y-6 px-6 py-8">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
@@ -182,11 +181,9 @@ export function ActiveRecallBoard() {
         </Card>
       ) : null}
     </div>
-    </MagicContainer>
     </TooltipProvider>
   );
 }
-
 function RecallCard({
   card,
   revealed,
@@ -199,43 +196,45 @@ function RecallCard({
   onReview: (rating: (typeof RATINGS)[number]["id"]) => void;
 }) {
   return (
-    <MagicCard 
-      className="rounded-md border bg-card p-4 hover:shadow-lg transition-all"
-      enableStars={true}
-      enableTilt={true}
-      particleCount={8}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <BookOpenCheck className="size-4 shrink-0" />
-            <h3 className="text-sm font-medium">Card</h3>
+    <div className="rounded-xl border border-black/10 dark:border-white/10 bg-card p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+      <div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <BookOpenCheck className="size-4 shrink-0 text-[#0A66C2]" />
+              <h3 className="text-sm font-medium">Card</h3>
+            </div>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Due {new Date(card.due_at).toLocaleDateString()} · EF {card.ease_factor}
+            </p>
           </div>
-          <p className="text-muted-foreground mt-1 text-xs">
-            Due {new Date(card.due_at).toLocaleDateString()} · EF {card.ease_factor}
-          </p>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          <p className="font-medium">{card.front}</p>
+          {revealed ? <p className="text-[#0A66C2] dark:text-blue-400 text-sm font-medium p-3 bg-[#0A66C2]/5 rounded-md border border-[#0A66C2]/10">{card.back}</p> : null}
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {card.tags.map((tag) => (
+            <Badge key={tag} variant="outline" className="bg-background">
+              {tag}
+            </Badge>
+          ))}
         </div>
       </div>
 
-      <div className="mt-4 space-y-3">
-        <p className="font-medium">{card.front}</p>
-        {revealed ? <p className="text-muted-foreground text-sm">{card.back}</p> : null}
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        {card.tags.map((tag) => (
-          <Badge key={tag} variant="outline">
-            {tag}
-          </Badge>
-        ))}
-      </div>
-
       {revealed ? (
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {RATINGS.map((rating) => (
             <Tooltip key={rating.id}>
               <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => onReview(rating.id)}>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => onReview(rating.id)}
+                  className="hover:text-[#0A66C2] hover:border-[#0A66C2] hover:bg-[#0A66C2]/10 transition-colors"
+                >
                   {rating.label}
                 </Button>
               </TooltipTrigger>
@@ -246,32 +245,30 @@ function RecallCard({
       ) : (
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button className="mt-4" variant="outline" onClick={onReveal}>
-              <CalendarClock className="size-4" />
+            <Button 
+              className="mt-5 w-fit hover:text-[#0A66C2] hover:border-[#0A66C2] hover:bg-[#0A66C2]/10 transition-colors" 
+              variant="outline" 
+              onClick={onReveal}
+            >
+              <CalendarClock className="size-4 mr-2" />
               Reveal
             </Button>
           </TooltipTrigger>
           <TooltipContent>Show the back of the card before grading recall</TooltipContent>
         </Tooltip>
       )}
-    </MagicCard>
+    </div>
   );
 }
 
 function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <MagicCard 
-      className="rounded-xl bg-card text-card-foreground shadow-sm"
-      enableTilt={true} 
-      enableStars={false} // Disable stars for top metrics to keep it clean
-    >
-      <Card className="h-full border-0 bg-transparent shadow-none">
-        <CardHeader>
-          <CardDescription>{label}</CardDescription>
-          <CardTitle className="text-2xl">{value}</CardTitle>
-        </CardHeader>
-      </Card>
-    </MagicCard>
+    <Card className="rounded-xl bg-card text-card-foreground shadow-sm border border-black/10 dark:border-white/10 hover:shadow-md transition-shadow">
+      <CardHeader>
+        <CardDescription className="font-medium uppercase tracking-wider text-[10px] text-muted-foreground">{label}</CardDescription>
+        <CardTitle className="text-3xl font-semibold text-[#0A66C2] dark:text-white">{value}</CardTitle>
+      </CardHeader>
+    </Card>
   );
 }
 
