@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     )
     openai_model: str = "gpt-4o-mini"
 
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-1.5-flash"
+
     # Inngest
     inngest_app_id: str = "canvasai"
     inngest_event_key: str | None = None

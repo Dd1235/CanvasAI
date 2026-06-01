@@ -25,13 +25,20 @@ class LLMProvider(Protocol):
 
 def get_provider() -> LLMProvider:
     from canvasai.llm.openai_provider import OpenAIProvider
+    from canvasai.llm.gemini_provider import GeminiProvider
 
     _REGISTRY: dict[str, type[LLMProvider]] = {
         "openai": OpenAIProvider,
+        "gemini": GeminiProvider,
     }
 
     name = get_settings().llm_provider
+
     impl = _REGISTRY.get(name)
+
     if impl is None:
-        raise ValueError(f"Unknown LLM provider: {name!r}. Registered: {list(_REGISTRY)}")
+        raise ValueError(
+            f"Unknown LLM provider: {name!r}. Registered: {list(_REGISTRY)}"
+        )
+
     return impl()
