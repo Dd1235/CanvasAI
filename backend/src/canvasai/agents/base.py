@@ -14,11 +14,13 @@ ACTIVE_ENGINE = "gemini"  # Options: "openai" or "gemini"
 MODEL_REGISTRY = {
     "gemini": {
         "fast": "gemini-3.1-flash-lite",
-        "heavy": "gemini-3-flash-preview"
+        "heavy": "gemini-3-flash-preview",
+        "heavy2": "gemini-3.5-flash",
     },
     "openai": {
         "fast": "gpt-4o-mini",
-        "heavy": "gpt-4o"
+        "heavy": "gpt-4o",
+        "heavy2": "gpt-4o",
     }
 }
 

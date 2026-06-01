@@ -12,7 +12,7 @@ class ArchitectOutput(BaseModel):
 
 class PedagogicalArchitect(AgentBase):
     role = "agent_2_architect"
-    model_tier = "heavy"
+    model_tier = "heavy2"
     
     system_prompt = (
         "You are an expert Whiteboard Teacher. Your goal is to guide a student through a concept "
