@@ -124,6 +124,10 @@ These are short animations we built to explain the ideas.
 
 <div align="center"><img src="docs/screenshots/knowledge-graph.gif" width="80%" alt="Knowledge graph animation"></div>
 
+**Active recall** — flip a card, grade it, and SM-2 schedules the next review
+
+<div align="center"><img src="docs/screenshots/active-recall.gif" width="80%" alt="Active recall SM-2 animation"></div>
+
 ## 🗺️ How It All Fits Together
 
 One request fans out to five agents, streams a live lesson, then folds into a lasting signal — with background jobs keeping the heavy work off the critical path so the canvas never blocks.
