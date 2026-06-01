@@ -96,6 +96,12 @@ Real screens from the live app
 | ----------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | <img src="docs/screenshots/kg-light.png" alt="Knowledge Graph — light"> | <img src="docs/screenshots/kg-dark.png" alt="Knowledge Graph — dark"> |
 
+**Behind the scenes** — review the facts the AI proposes before they merge, and run a graph-driven study sprint
+
+| Review proposed facts (async merge) | Adaptive study sprint |
+| --- | --- |
+| <img src="docs/screenshots/kg-merge-review.png" alt="Review proposed facts before they merge into the graph"> | <img src="docs/screenshots/study-sprint.png" alt="Adaptive study sprint generated from the knowledge graph"> |
+
 **ChronoSync timeline** — branch and revert any turn
 
 <div align="center"><img src="docs/screenshots/timeline-dark.png" width="82%" alt="ChronoSync timeline"></div>
